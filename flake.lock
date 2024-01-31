@@ -955,11 +955,11 @@
     "hackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1703636672,
-        "narHash": "sha256-QVADvglA1x9WpQFij73VvdvnqquCUCNBM0BOFHXQz0Y=",
+        "lastModified": 1706574159,
+        "narHash": "sha256-OcE1NT4zQfV4h8Ybq1ttNT+TkXjTV1O2doiCfJzjCbw=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "6a9040a7f72c7e629b286a461cf856d987c163ba",
+        "rev": "ccff69cc942afd51dbdd7466192e3f4cfe09cde2",
         "type": "github"
       },
       "original": {
@@ -1551,7 +1551,9 @@
         "CHaP": "CHaP",
         "easy-purescript-nix": "easy-purescript-nix",
         "flake-utils": "flake-utils_2",
-        "hackage": "hackage",
+        "hackage": [
+          "hackage"
+        ],
         "haskell-nix": "haskell-nix",
         "iogx-template-haskell": "iogx-template-haskell",
         "iogx-template-vanilla": "iogx-template-vanilla",
@@ -2761,6 +2763,7 @@
     },
     "root": {
       "inputs": {
+        "hackage": "hackage",
         "iogx": "iogx"
       }
     },

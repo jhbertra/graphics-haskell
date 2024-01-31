@@ -1,0 +1,64 @@
+cabal-version: 3.4
+name:           graphics-core
+version:        0.1.0.0
+synopsis:       Core data types and algorithms for Haskell graphics
+author:         Jamie Bertram
+maintainer:     Jamie Bertram
+copyright:      2024 Jamie Bertram
+license:        MIT
+license-file:   LICENSE
+build-type:     Simple
+
+common base
+  default-language:   Haskell2010
+  default-extensions:
+    AllowAmbiguousTypes
+    BlockArguments
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    EmptyCase
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedRecordDot
+    OverloadedStrings
+    PolyKinds
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wincomplete-uni-patterns
+    -Wunused-packages -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
+
+library
+  import: base
+  exposed-modules:
+      Data.JSON.Generic
+      Data.JSON.Generic.Types
+  other-modules:
+      Paths_graphics_core
+  hs-source-dirs: src
+  build-depends:
+      base ==4.*
+  default-language: Haskell2010
