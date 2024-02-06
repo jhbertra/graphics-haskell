@@ -53,12 +53,19 @@ common base
 
 library
   import:           base
-  exposed-modules:  Math.Vector
+  exposed-modules:
+    Geometry.Bounds
+    Geometry.Parametric
+    Geometry.Ray
+    Math.Vector
+
   other-modules:    Paths_graphics_core
   hs-source-dirs:   src
   build-depends:
     , base
+    , comonad
     , lens
+    , linear
     , scientific
 
   default-language: Haskell2010
