@@ -10,7 +10,11 @@ import Control.Lens (Field2 (_2), Lens, Traversal', lens, makeLenses, makePrisms
 import GHC.Generics (Generic, Generic1)
 import Geometry.Parametric (Parametric (..))
 import Linear (V3, (^*))
-import Linear.Affine (Affine (..), Point)
+import Linear.Affine (Affine (..), Point (..))
+import Linear.Affine.Arbitrary ()
+import Linear.Arbitrary ()
+import Test.QuickCheck (Arbitrary, genericShrink, oneof)
+import Test.QuickCheck.Arbitrary (Arbitrary (..))
 
 data Ray a = Ray
   { _o :: {-# UNPACK #-} Point V3 Float
@@ -20,6 +24,10 @@ data Ray a = Ray
   deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
 
 $(makeLenses ''Ray)
+
+instance (Arbitrary a) => Arbitrary (Ray a) where
+  arbitrary = Ray <$> arbitrary <*> arbitrary <*> arbitrary
+  shrink = genericShrink
 
 instance Comonad Ray where
   extract = _rayEnv
@@ -35,6 +43,14 @@ data RayWithDifferentials a
   = RayWithNoDifferentials {-# UNPACK #-} (Ray a)
   | RayWithDifferentials {-# UNPACK #-} (Ray a) {-# UNPACK #-} RayDifferentials
   deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
+
+instance (Arbitrary a) => Arbitrary (RayWithDifferentials a) where
+  arbitrary =
+    oneof
+      [ RayWithNoDifferentials <$> arbitrary
+      , RayWithDifferentials <$> arbitrary <*> arbitrary
+      ]
+  shrink = genericShrink
 
 rdRay :: Lens (RayWithDifferentials a) (RayWithDifferentials b) (Ray a) (Ray b)
 rdRay = lens get set
@@ -67,6 +83,15 @@ data RayDifferentials = RayDifferentials
   , _ryDirection :: {-# UNPACK #-} V3 Float
   }
   deriving (Ord, Eq, Generic, Show, Read)
+
+instance Arbitrary RayDifferentials where
+  arbitrary =
+    RayDifferentials
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+  shrink = genericShrink
 
 $(makePrisms ''RayWithDifferentials)
 $(makeLenses ''RayDifferentials)

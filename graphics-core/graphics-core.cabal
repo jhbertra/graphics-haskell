@@ -17,6 +17,7 @@ common base
     DataKinds
     DefaultSignatures
     DeriveAnyClass
+    DeriveDataTypeable
     DeriveFoldable
     DeriveFunctor
     DeriveGeneric
@@ -28,6 +29,7 @@ common base
     ExplicitForAll
     FlexibleContexts
     FlexibleInstances
+    FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
     LambdaCase
@@ -35,6 +37,7 @@ common base
     NumericUnderscores
     OverloadedRecordDot
     OverloadedStrings
+    PatternSynonyms
     PolyKinds
     RankNTypes
     RecordWildCards
@@ -45,6 +48,7 @@ common base
     TypeFamilies
     TypeOperators
     UndecidableInstances
+    ViewPatterns
 
   ghc-options:
     -Wall -Wnoncanonical-monad-instances -Wincomplete-uni-patterns
@@ -52,20 +56,49 @@ common base
     -Wredundant-constraints -Widentities
 
 library
-  import:           base
+  import:          base
   exposed-modules:
     Geometry.Bounds
     Geometry.Parametric
     Geometry.Ray
-    Math.Vector
+    Linear.Affine.Arbitrary
+    Linear.Approximate
+    Linear.V2.Arbitrary
 
-  other-modules:    Paths_graphics_core
-  hs-source-dirs:   src
+  other-modules:   Paths_graphics_core
+  hs-source-dirs:  src
   build-depends:
     , base
     , comonad
+    , distributive
     , lens
     , linear
-    , scientific
+    , linear-tests
+    , QuickCheck
+    , random
+    , semigroupoids
+    , vector
 
-  default-language: Haskell2010
+test-suite graphics-core-test
+  import:             base
+  hs-source-dirs:     test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    Geometry.BoundsSpec
+    Linear.V2.ArbitrarySpec
+    Paths_graphics_core
+    Test.Hspec.QuickCheck.Classes
+
+  autogen-modules:
+  build-depends:
+    , base
+    , graphics-core
+    , hspec
+    , linear
+    , QuickCheck
+    , quickcheck-classes
+    , random
+
+  build-tool-depends: hspec-discover:hspec-discover
+  ghc-options:        -threaded

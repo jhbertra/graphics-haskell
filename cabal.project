@@ -1,2 +1,6 @@
 packages:
   graphics-core
+
+tests: True
+
+test-show-details: direct
