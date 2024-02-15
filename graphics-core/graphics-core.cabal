@@ -61,6 +61,7 @@ library
     Geometry.Bounds
     Geometry.Parametric
     Geometry.Ray
+    Geometry.Spherical
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
@@ -71,6 +72,7 @@ library
     , base
     , comonad
     , distributive
+    , ieee
     , lens
     , linear
     , linear-tests

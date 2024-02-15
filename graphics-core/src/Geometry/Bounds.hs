@@ -25,6 +25,7 @@ import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V2, V3, (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
+import Numeric.IEEE (IEEE (infinity))
 import Test.QuickCheck (Arbitrary (..), elements, genericShrink, suchThat)
 import Prelude hiding (null)
 
@@ -137,10 +138,10 @@ instance (Additive f, Ord a) => Semigroup (Bounds f a) where
   {-# INLINE (<>) #-}
 
 instance {-# OVERLAPPING #-} (Additive f, Applicative f) => Monoid (Bounds f Float) where
-  mempty = nilFloat
+  mempty = nilIEEE
 
 instance {-# OVERLAPPING #-} (Additive f, Applicative f) => Monoid (Bounds f Double) where
-  mempty = nilFloat
+  mempty = nilIEEE
 
 instance {-# OVERLAPPING #-} (Additive f, Ord a, Bounded a, Applicative f) => Monoid (Bounds f a) where
   mempty = nil
@@ -189,12 +190,9 @@ universal :: (Bounded a, Applicative f) => Bounds f a
 universal = Bounds (pure minBound) (pure maxBound)
 {-# INLINE universal #-}
 
-universalFloat :: forall f a. (RealFloat a, Applicative f) => Bounds f a
-universalFloat =
-  Bounds
-    (pure $ encodeFloat (-1) (snd $ floatRange @a 0))
-    (pure $ encodeFloat 1 (snd $ floatRange @a 0))
-{-# INLINE universalFloat #-}
+universalIEEE :: forall f a. (IEEE a, Applicative f) => Bounds f a
+universalIEEE = Bounds (pure (-infinity)) $ pure infinity
+{-# INLINE universalIEEE #-}
 
 union :: (Additive f, Ord a) => Bounds f a -> Bounds f a -> Bounds f a
 union a b =
@@ -207,12 +205,9 @@ nil :: (Bounded a, Applicative f) => Bounds f a
 nil = Bounds (pure maxBound) (pure minBound)
 {-# INLINE nil #-}
 
-nilFloat :: forall f a. (RealFloat a, Applicative f) => Bounds f a
-nilFloat =
-  Bounds
-    (pure $ encodeFloat 1 (snd $ floatRange @a 0))
-    (pure $ encodeFloat (-1) (snd $ floatRange @a 0))
-{-# INLINE nilFloat #-}
+nilIEEE :: forall f a. (IEEE a, Applicative f) => Bounds f a
+nilIEEE = Bounds (pure infinity) $ pure (-infinity)
+{-# INLINE nilIEEE #-}
 
 overlaps :: (Ord a, Foldable f, Additive f) => Bounds f a -> Bounds f a -> Bool
 overlaps a b = not $ degenerate $ intersect a b
