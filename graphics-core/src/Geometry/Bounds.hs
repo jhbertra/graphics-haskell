@@ -21,7 +21,7 @@ import qualified Data.Vector.Generic as V
 import qualified Data.Vector.Generic.Mutable as M
 import qualified Data.Vector.Unboxed as U
 import GHC.Generics (Generic, Generic1)
-import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V2, V3, (^/), _xz, _yz)
+import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1, V2, V3, (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
@@ -153,6 +153,7 @@ instance Ixed (Bounds f a) where
 type instance Index (Bounds f a) = Extreme
 type instance IxValue (Bounds f a) = Point f a
 
+type Bounds1 = Bounds V1
 type Bounds2 = Bounds V2
 type Bounds3 = Bounds V3
 type Bounds2f = Bounds2 Float

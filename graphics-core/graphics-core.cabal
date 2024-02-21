@@ -87,7 +87,6 @@ library
 executable spectrum-viewer
   import:             base
   hs-source-dirs:     spectrum-viewer
-  type:               exitcode-stdio-1.0
   main-is:            Main.hs
   build-depends:
     , base
@@ -97,7 +96,7 @@ executable spectrum-viewer
     , poly
 
   build-tool-depends: hspec-discover:hspec-discover
-  ghc-options:        -threaded
+  ghc-options:        -threaded -fspecialise-aggressively
 
 test-suite graphics-core-test
   import:             base

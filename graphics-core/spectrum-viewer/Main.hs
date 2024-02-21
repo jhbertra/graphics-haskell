@@ -5,12 +5,15 @@ import Codec.Picture.Types (generateImage)
 import Data.Ord (clamp)
 import Data.Poly (monomial, scale, pattern X)
 import Data.Word (Word8)
+import Geometry.Bounds (Bounds (..))
 import Linear
+import Linear.Affine (Point (..))
 import Physics.Spectrum (
   Spectrum,
   blackbodySpectrum,
-  cieY,
+  cieZ,
   cosSpectrum,
+  emptySpectrum,
   expSpectrum,
   interpolatedSpectrum,
   lerpSpectrum,
@@ -23,10 +26,11 @@ import Physics.Spectrum (
   sqrSpectrum,
   sqrtSpectrum,
   tanSpectrum,
+  visibleBounds,
  )
 
 main :: IO ()
-main = writePng "output.png" $ generateImage (render interpolateS) xRes yRes
+main = writePng "output.png" $ generateImage (render emptySpectrum) xRes yRes
 
 xRes :: Int
 xRes = 400
@@ -40,13 +44,15 @@ render spectrum = \x y -> do
   let y' = remapY y
   let a = sampleSpectrum l spectrum
   let t = clamp (0, 1) $ abs ((a - y') * fromIntegral yRes) - 2
-  let rgb' = lerp t bg rgb
+  let near i j = abs (j - i) < 0.5
+  let rgb' = if near l lMin || near l lMax then 1 - bg else lerp t bg rgb
   v3ToColor rgb'
   where
     bg
       | norm rgb <= 1 = 1
       | otherwise = 0
     rgb = xyzToSRgbLinear $ spectrumToXYZ spectrum
+    Bounds (P (V1 lMin)) (P (V1 lMax)) = visibleBounds spectrum
 
 remapY :: Int -> Float
 remapY = subtract 0.1 . (* 1.25) . (1 -) . (/ fromIntegral yRes) . fromIntegral
@@ -125,7 +131,7 @@ tanS :: Spectrum Float
 tanS = tanSpectrum $ polynomialSpectrum $ monomial 1 0.01
 
 interpolateS :: Spectrum Float
-interpolateS = interpolatedSpectrum [(360, 0), (400, 0.25), (700, 1), (830, 0)]
+interpolateS = interpolatedSpectrum [(400, 0.25), (500, 1), (600, 0), (700, 0.8), (800, 0.5)]
 
 sampledS :: Spectrum Float
-sampledS = cieY
+sampledS = cieZ

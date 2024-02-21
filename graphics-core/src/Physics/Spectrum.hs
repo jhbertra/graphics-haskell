@@ -3,9 +3,13 @@ module Physics.Spectrum where
 import Data.Function (on)
 import qualified Data.Map as Map
 import Data.Map.Internal (Map (..))
+import Data.Maybe (fromMaybe)
 import Data.Poly
 import qualified Data.Vector.Unboxed as U
+import Geometry.Bounds (Bounds (Bounds), Bounds1)
+import qualified Geometry.Bounds as Bounds
 import Linear
+import Linear.Affine (Point (..))
 
 data Spectrum a where
   EmptySpectrum :: Spectrum a
@@ -39,7 +43,7 @@ data Spectrum a where
   AsinhSpectrum :: Spectrum a -> Spectrum a
   AcoshSpectrum :: Spectrum a -> Spectrum a
   AtanhSpectrum :: Spectrum a -> Spectrum a
-  SampledSpectrum :: (U.Unbox a) => a -> Int -> U.Vector a -> Spectrum a
+  SampledSpectrum :: (U.Unbox a) => a -> a -> U.Vector a -> Spectrum a
   InterpolatedSpectrum :: Map a a -> Spectrum a
   BlackbodySpectrum :: Blackbody a -> Spectrum a
 
@@ -48,10 +52,12 @@ deriving instance (Show a, U.Unbox a) => Show (Spectrum a)
 
 emptySpectrum :: Spectrum a
 emptySpectrum = EmptySpectrum
+{-# INLINE emptySpectrum #-}
 
 constSpectrum :: (Num a, Eq a) => a -> Spectrum a
 constSpectrum 0 = EmptySpectrum
 constSpectrum a = ConstSpectrum a
+{-# INLINE constSpectrum #-}
 
 addSpectrum :: (Eq a, U.Unbox a, Fractional a) => Spectrum a -> Spectrum a -> Spectrum a
 addSpectrum EmptySpectrum a = a
@@ -113,15 +119,18 @@ powSpectrum a (ConstSpectrum 2) = sqrSpectrum a
 powSpectrum a (ConstSpectrum 0.5) = sqrtSpectrum a
 powSpectrum (ConstSpectrum a) (ConstSpectrum b) = constSpectrum $ a ** b
 powSpectrum a b = PowSpectrum a b
+{-# INLINE powSpectrum #-}
 
 logBaseSpectrum :: Spectrum a -> Spectrum a -> Spectrum a
 logBaseSpectrum = LogBaseSpectrum
+{-# INLINE logBaseSpectrum #-}
 
 lerpSpectrum :: (Eq a, Num a) => a -> Spectrum a -> Spectrum a -> Spectrum a
 lerpSpectrum 0 a _ = a
 lerpSpectrum 1 _ b = b
 lerpSpectrum t (ConstSpectrum a) (ConstSpectrum b) = constSpectrum $ (1 - t) * a + t * b
 lerpSpectrum t a b = LerpSpectrum t a b
+{-# INLINE lerpSpectrum #-}
 
 absSpectrum :: (Num a, Eq a) => Spectrum a -> Spectrum a
 absSpectrum EmptySpectrum = EmptySpectrum
@@ -134,6 +143,7 @@ absSpectrum (SqrtSpectrum a) = SqrtSpectrum a
 absSpectrum (ExpSpectrum a) = ExpSpectrum a
 absSpectrum (PolynomialSpectrum a) = PolynomialSpectrum $ abs a
 absSpectrum a = AbsSpectrum a
+{-# INLINE absSpectrum #-}
 
 negateSpectrum :: (Num a, Eq a) => Spectrum a -> Spectrum a
 negateSpectrum EmptySpectrum = EmptySpectrum
@@ -141,33 +151,39 @@ negateSpectrum (ConstSpectrum a) = ConstSpectrum $ negate a
 negateSpectrum (PolynomialSpectrum a) = PolynomialSpectrum $ negate a
 negateSpectrum (NegateSpectrum a) = a
 negateSpectrum a = NegateSpectrum a
+{-# INLINE negateSpectrum #-}
 
 signumSpectrum :: (Num a, Eq a) => Spectrum a -> Spectrum a
 signumSpectrum EmptySpectrum = EmptySpectrum
 signumSpectrum (ConstSpectrum a) = ConstSpectrum $ signum a
 signumSpectrum (PolynomialSpectrum a) = PolynomialSpectrum $ signum a
 signumSpectrum a = SignumSpectrum a
+{-# INLINE signumSpectrum #-}
 
 recipSpectrum :: (Fractional a, Eq a) => Spectrum a -> Spectrum a
 recipSpectrum (ConstSpectrum a) = constSpectrum $ recip a
 recipSpectrum (RecipSpectrum a) = a
 recipSpectrum a = RecipSpectrum a
+{-# INLINE recipSpectrum #-}
 
 polynomialSpectrum :: (U.Unbox a, Num a, Eq a) => UPoly a -> Spectrum a
 polynomialSpectrum p = case leading p of
   Nothing -> emptySpectrum
   Just (0, a) -> constSpectrum a
   _ -> PolynomialSpectrum p
+{-# INLINE polynomialSpectrum #-}
 
 sigmoidSpectrum :: (RealFloat a) => Spectrum a -> Spectrum a
 sigmoidSpectrum EmptySpectrum = constSpectrum $ sigmoid 0
 sigmoidSpectrum (ConstSpectrum a) = constSpectrum $ sigmoid a
 sigmoidSpectrum a = SigmoidSpectrum a
+{-# INLINE sigmoidSpectrum #-}
 
 sigmoid :: (RealFloat a) => a -> a
 sigmoid a
   | isInfinite a = if a > 0 then 1 else 0
   | otherwise = 0.5 + a / (2 * sqrt (1 + a * a))
+{-# INLINE sigmoid #-}
 
 sqrSpectrum :: (Num a, Eq a) => Spectrum a -> Spectrum a
 sqrSpectrum EmptySpectrum = EmptySpectrum
@@ -183,103 +199,158 @@ sqrtSpectrum EmptySpectrum = EmptySpectrum
 sqrtSpectrum (ConstSpectrum a) = constSpectrum $ sqrt a
 sqrtSpectrum (SqrSpectrum a) = a
 sqrtSpectrum a = SqrtSpectrum a
+{-# INLINE sqrtSpectrum #-}
 
 expSpectrum :: (Eq a, Floating a) => Spectrum a -> Spectrum a
 expSpectrum EmptySpectrum = constSpectrum 1
 expSpectrum (ConstSpectrum a) = constSpectrum $ exp a
 expSpectrum (LogSpectrum a) = a
 expSpectrum a = ExpSpectrum a
+{-# INLINE expSpectrum #-}
 
 logSpectrum :: (Eq a, Floating a) => Spectrum a -> Spectrum a
 logSpectrum (ConstSpectrum 1) = EmptySpectrum
 logSpectrum (ConstSpectrum a) = constSpectrum $ log a
 logSpectrum (ExpSpectrum a) = a
 logSpectrum a = LogSpectrum a
+{-# INLINE logSpectrum #-}
 
 sinSpectrum :: Spectrum a -> Spectrum a
 sinSpectrum = SinSpectrum
+{-# INLINE sinSpectrum #-}
 
 cosSpectrum :: Spectrum a -> Spectrum a
 cosSpectrum = CosSpectrum
+{-# INLINE cosSpectrum #-}
 
 tanSpectrum :: Spectrum a -> Spectrum a
 tanSpectrum = TanSpectrum
+{-# INLINE tanSpectrum #-}
 
 asinSpectrum :: Spectrum a -> Spectrum a
 asinSpectrum = AsinSpectrum
+{-# INLINE asinSpectrum #-}
 
 acosSpectrum :: Spectrum a -> Spectrum a
 acosSpectrum = AcosSpectrum
+{-# INLINE acosSpectrum #-}
 
 atanSpectrum :: Spectrum a -> Spectrum a
 atanSpectrum = AtanSpectrum
+{-# INLINE atanSpectrum #-}
 
 sinhSpectrum :: Spectrum a -> Spectrum a
 sinhSpectrum = SinhSpectrum
+{-# INLINE sinhSpectrum #-}
 
 coshSpectrum :: Spectrum a -> Spectrum a
 coshSpectrum = CoshSpectrum
+{-# INLINE coshSpectrum #-}
 
 tanhSpectrum :: Spectrum a -> Spectrum a
 tanhSpectrum = TanhSpectrum
+{-# INLINE tanhSpectrum #-}
 
 asinhSpectrum :: Spectrum a -> Spectrum a
 asinhSpectrum = AsinhSpectrum
+{-# INLINE asinhSpectrum #-}
 
 acoshSpectrum :: Spectrum a -> Spectrum a
 acoshSpectrum = AcoshSpectrum
+{-# INLINE acoshSpectrum #-}
 
 atanhSpectrum :: Spectrum a -> Spectrum a
 atanhSpectrum = AtanhSpectrum
+{-# INLINE atanhSpectrum #-}
 
-sampledSpectrum :: (U.Unbox a) => a -> Int -> U.Vector a -> Spectrum a
-sampledSpectrum = SampledSpectrum
+sampledSpectrum :: (Ord a, U.Unbox a, Num a) => a -> a -> U.Vector a -> Spectrum a
+sampledSpectrum λmin samplePeriod samples
+  | λmin' > fromIntegral maxVisibleλ || U.null samples' = EmptySpectrum
+  | otherwise = SampledSpectrum λmin' samplePeriod samples'
+  where
+    firstNonZero = fromMaybe (U.length samples) $ U.findIndex (/= 0) samples
+    lastNonZero = fromMaybe 0 $ U.findIndexR (/= 0) samples
+    samples' = U.drop firstNonZero $ U.take (lastNonZero + 1) samples
+    λmin' = λmin + (fromIntegral firstNonZero * samplePeriod)
+{-# INLINE sampledSpectrum #-}
 
 interpolatedSpectrum :: (Ord a) => [(a, a)] -> Spectrum a
 interpolatedSpectrum = InterpolatedSpectrum . Map.fromList
+{-# INLINE interpolatedSpectrum #-}
 
 blackbodySpectrum :: (Floating a, Ord a) => a -> Spectrum a
 blackbodySpectrum = BlackbodySpectrum . mkBlackbody
+{-# INLINE blackbodySpectrum #-}
 
 instance (Num a, U.Unbox a, Eq a, Fractional a) => Semigroup (Spectrum a) where
   (<>) = (+)
+  {-# INLINE (<>) #-}
 
 instance (Num a, U.Unbox a, Eq a, Fractional a) => Monoid (Spectrum a) where
   mempty = emptySpectrum
+  {-# INLINE mempty #-}
 
 instance (Num a, U.Unbox a, Eq a, Fractional a) => Num (Spectrum a) where
   fromInteger = constSpectrum . fromInteger
+  {-# INLINE fromInteger #-}
   (+) = addSpectrum
+  {-# INLINE (+) #-}
   (-) = subSpectrum
+  {-# INLINE (-) #-}
   (*) = mulSpectrum
+  {-# INLINE (*) #-}
   abs = absSpectrum
+  {-# INLINE abs #-}
   negate = negateSpectrum
+  {-# INLINE negate #-}
   signum = signumSpectrum
+  {-# INLINE signum #-}
 
 instance (Fractional a, U.Unbox a, Eq a) => Fractional (Spectrum a) where
   (/) = divSpectrum
+  {-# INLINE (/) #-}
   recip = recipSpectrum
+  {-# INLINE recip #-}
   fromRational = polynomialSpectrum . monomial 0 . fromRational
+  {-# INLINE fromRational #-}
 
 instance (Floating a, U.Unbox a, Eq a) => Floating (Spectrum a) where
   pi = polynomialSpectrum $ monomial 0 pi
+  {-# INLINE pi #-}
   exp = expSpectrum
+  {-# INLINE exp #-}
   log = logSpectrum
+  {-# INLINE log #-}
   sqrt = sqrtSpectrum
+  {-# INLINE sqrt #-}
   (**) = powSpectrum
+  {-# INLINE (**) #-}
   logBase = logBaseSpectrum
+  {-# INLINE logBase #-}
   sin = sinSpectrum
+  {-# INLINE sin #-}
   cos = cosSpectrum
+  {-# INLINE cos #-}
   tan = tanSpectrum
+  {-# INLINE tan #-}
   asin = asinSpectrum
+  {-# INLINE asin #-}
   acos = acosSpectrum
+  {-# INLINE acos #-}
   atan = atanSpectrum
+  {-# INLINE atan #-}
   sinh = sinhSpectrum
+  {-# INLINE sinh #-}
   cosh = coshSpectrum
+  {-# INLINE cosh #-}
   tanh = tanhSpectrum
+  {-# INLINE tanh #-}
   asinh = asinhSpectrum
+  {-# INLINE asinh #-}
   acosh = acoshSpectrum
+  {-# INLINE acosh #-}
   atanh = atanhSpectrum
+  {-# INLINE atanh #-}
 
 data Blackbody a = Blackbody
   { bbTemperature :: a
@@ -287,8 +358,56 @@ data Blackbody a = Blackbody
   }
   deriving (Eq, Ord, Show)
 
-sampleSpectrum :: forall a. (RealFloat a) => a -> Spectrum a -> a
-sampleSpectrum λ = max 0 . go
+{-# SPECIALIZE visibleBounds :: Spectrum Float -> Bounds1 Float #-}
+{-# SPECIALIZE visibleBounds :: Spectrum Double -> Bounds1 Double #-}
+visibleBounds :: (Monoid (Bounds1 a), Ord a, Num a) => Spectrum a -> Bounds1 a
+visibleBounds = \case
+  EmptySpectrum -> mempty
+  ConstSpectrum a
+    | a <= 0 -> mempty
+    | otherwise -> maxVisibleBounds
+  AddSpectrum a b -> visibleBounds a <> visibleBounds b
+  SubSpectrum a b -> visibleBounds a <> visibleBounds b
+  MulSpectrum a b -> visibleBounds a `Bounds.intersect` visibleBounds b
+  DivSpectrum a b -> visibleBounds a `Bounds.intersect` visibleBounds b
+  PowSpectrum _ _ -> maxVisibleBounds
+  LogBaseSpectrum _ _ -> maxVisibleBounds
+  LerpSpectrum 0 a _ -> visibleBounds a
+  LerpSpectrum 1 _ b -> visibleBounds b
+  LerpSpectrum _ a b -> visibleBounds a <> visibleBounds b
+  AbsSpectrum s -> visibleBounds s
+  NegateSpectrum s -> visibleBounds s
+  SignumSpectrum s -> visibleBounds s
+  RecipSpectrum _ -> maxVisibleBounds
+  PolynomialSpectrum _ -> maxVisibleBounds
+  SigmoidSpectrum _ -> maxVisibleBounds
+  SqrSpectrum s -> visibleBounds s
+  SqrtSpectrum s -> visibleBounds s
+  ExpSpectrum _ -> maxVisibleBounds
+  LogSpectrum _ -> maxVisibleBounds
+  SinSpectrum _ -> maxVisibleBounds
+  CosSpectrum _ -> maxVisibleBounds
+  TanSpectrum _ -> maxVisibleBounds
+  AsinSpectrum _ -> maxVisibleBounds
+  AcosSpectrum _ -> maxVisibleBounds
+  AtanSpectrum _ -> maxVisibleBounds
+  SinhSpectrum _ -> maxVisibleBounds
+  CoshSpectrum _ -> maxVisibleBounds
+  TanhSpectrum _ -> maxVisibleBounds
+  AsinhSpectrum _ -> maxVisibleBounds
+  AcoshSpectrum _ -> maxVisibleBounds
+  AtanhSpectrum _ -> maxVisibleBounds
+  SampledSpectrum λmin samplePeriod samples -> pure λmin <> pure (λmin + (samplePeriod * fromIntegral (U.length samples)))
+  InterpolatedSpectrum points -> (foldMap . foldMap) (pure . fst . fst) [Map.minViewWithKey points, Map.maxViewWithKey points]
+  BlackbodySpectrum _ -> maxVisibleBounds
+
+maxVisibleBounds :: (Num a, Ord a) => Bounds1 a
+maxVisibleBounds = pure (fromInteger minVisibleλ) <> pure (fromInteger maxVisibleλ)
+
+sampleSpectrum :: forall a. (RealFloat a, Monoid (Bounds1 a)) => a -> Spectrum a -> a
+sampleSpectrum λ s'
+  | Bounds.inside (P (V1 λ)) $ visibleBounds s' = max 0 $ go s'
+  | otherwise = 0
   where
     go = \case
       EmptySpectrum -> 0
@@ -326,39 +445,41 @@ sampleSpectrum λ = max 0 . go
       AcoshSpectrum s -> acosh $ go s
       AtanhSpectrum s -> atanh $ go s
       SampledSpectrum λmin samplePeriod samples
-        | λmin < 1 || samplePeriod < 1 || λ < λmin -> 0
+        | λmin < 1 || samplePeriod <= 0 || λ < λmin -> 0
         | otherwise -> do
             let getAtOffset offset
                   | offset >= U.length samples = 0
                   | otherwise = samples U.! offset
-            let (offset, t) = properFraction $ λ - λmin
+            let (offset, t) = properFraction $ (λ - λmin) / samplePeriod
             let a0 = getAtOffset offset
             let a1 = getAtOffset $ offset + 1
             (1 - t) * a0 + t * a1
       InterpolatedSpectrum points -> case neighborhood λ points of
         Nothing -> 0
-        Just (_, (λ0, a0), r) -> case Map.minViewWithKey r of
-          Just ((λ1, a1), _) ->
-            let t = (λ - λ0) / (λ1 - λ0)
-             in (1 - t) * a0 + t * a1
-          _ -> a0
+        Just (_, (λ0, a0), (λ1, a1), _) ->
+          let t = (λ - λ0) / (λ1 - λ0)
+           in (1 - t) * a0 + t * a1
       BlackbodySpectrum Blackbody{..}
         | λ <= 0 -> 0
         | otherwise -> blackbody bbTemperature λ * bbNormalizationFactor
 
-neighborhood :: (Ord k) => k -> Map k a -> Maybe (Map k a, (k, a), Map k a)
+neighborhood :: (Ord k) => k -> Map k a -> Maybe (Map k a, (k, a), (k, a), Map k a)
 neighborhood k m = case Map.partitionWithKey (\k' _ -> k' <= k) m of
   (l, r) -> case Map.maxViewWithKey l of
-    Just ((k'', a), l') -> Just (l', (k'', a), r)
-    _ -> case Map.minViewWithKey r of
-      Just ((k'', a), r') -> Just (l, (k'', a), r')
-      Nothing -> Nothing
+    Just ((k', a), l') -> case Map.minViewWithKey r of
+      Just ((k'', b), r') -> Just (l', (k', a), (k'', b), r')
+      _ -> Nothing
+    _ -> Nothing
+{-# INLINE neighborhood #-}
 
 mkBlackbody :: (Floating a, Ord a) => a -> Blackbody a
 mkBlackbody bbTemperature = Blackbody{..}
   where
     λMax = 2.8977721e-3 / bbTemperature
+    {-# INLINE λMax #-}
     bbNormalizationFactor = 1 / blackbody bbTemperature (λMax * 1e9)
+    {-# INLINE bbNormalizationFactor #-}
+{-# INLINE mkBlackbody #-}
 
 blackbody :: (Ord a, Floating a) => a -> a -> a
 blackbody t
@@ -366,12 +487,18 @@ blackbody t
   | otherwise = \λ -> do
       let λ' = λ * 1e-9
       (2 * 5.955206e-17) / ((λ' ** 5) * (exp (1.986443e-25 / (λ' * 1.3806488e-23 * t)) - 1))
+{-# INLINE blackbody #-}
 
-integrate :: (RealFloat a) => Integer -> Integer -> Spectrum a -> a
-integrate a b s = foldr ((+) . flip sampleSpectrum s . fromInteger) 0 [a .. b]
+integrate :: (RealFloat a, Monoid (Bounds1 a)) => Bounds1 Integer -> Spectrum a -> a
+integrate bounds@(Bounds (P (V1 a)) (P (V1 b))) s
+  | Bounds.null bounds = 0
+  | otherwise = foldr ((+) . flip sampleSpectrum s . fromInteger) 0 [a .. b]
+{-# INLINE integrate #-}
 
-integrateVisible :: (RealFloat a) => Spectrum a -> a
-integrateVisible = integrate minVisibleλ maxVisibleλ
+integrateVisible :: (RealFloat a, Monoid (Bounds1 a)) => Spectrum a -> a
+integrateVisible s = case visibleBounds s of
+  (Bounds (P (V1 a)) (P (V1 b))) -> integrate (Bounds (P (V1 $ floor a)) (P (V1 $ ceiling b))) s
+{-# INLINE integrateVisible #-}
 
 maxVisibleλ :: Integer
 maxVisibleλ = 830
@@ -382,10 +509,12 @@ minVisibleλ = 360
 nCIESamples :: Int
 nCIESamples = 471
 
-mkCIESpectrum :: (U.Unbox a, Num a) => [a] -> Spectrum a
-mkCIESpectrum = SampledSpectrum (fromInteger minVisibleλ) 1 . U.fromListN nCIESamples
+mkCIESpectrum :: (U.Unbox a, Num a, Ord a) => [a] -> Spectrum a
+mkCIESpectrum = sampledSpectrum (fromInteger minVisibleλ) 1 . U.fromListN nCIESamples
 
-spectrumToXYZ :: (RealFloat a, U.Unbox a) => Spectrum a -> V3 a
+{-# SPECIALIZE spectrumToXYZ :: Spectrum Float -> V3 Float #-}
+{-# SPECIALIZE spectrumToXYZ :: Spectrum Double -> V3 Double #-}
+spectrumToXYZ :: (RealFloat a, U.Unbox a, Monoid (Bounds1 a)) => Spectrum a -> V3 a
 spectrumToXYZ s =
   V3
     (integrateVisible $ cieX * s)
@@ -393,7 +522,9 @@ spectrumToXYZ s =
     (integrateVisible $ cieZ * s)
     ^/ cieYIntegral
 
-cieX :: (U.Unbox a, Fractional a) => Spectrum a
+{-# SPECIALIZE cieX :: Spectrum Float #-}
+{-# SPECIALIZE cieX :: Spectrum Double #-}
+cieX :: (U.Unbox a, Fractional a, Ord a) => Spectrum a
 cieX =
   mkCIESpectrum
     [ 0.0001299000
@@ -869,7 +1000,9 @@ cieX =
     , 0.000001251141
     ]
 
-cieY :: (U.Unbox a, Fractional a) => Spectrum a
+{-# SPECIALIZE cieY :: Spectrum Float #-}
+{-# SPECIALIZE cieY :: Spectrum Double #-}
+cieY :: (U.Unbox a, Fractional a, Ord a) => Spectrum a
 cieY =
   mkCIESpectrum
     [ 0.000003917000
@@ -1345,10 +1478,14 @@ cieY =
     , 0.0000004518100
     ]
 
-cieYIntegral :: (RealFloat a, U.Unbox a) => a
+{-# SPECIALIZE cieYIntegral :: Float #-}
+{-# SPECIALIZE cieYIntegral :: Double #-}
+cieYIntegral :: (RealFloat a, U.Unbox a, Monoid (Bounds1 a)) => a
 cieYIntegral = integrateVisible cieY
 
-cieZ :: (U.Unbox a, Fractional a) => Spectrum a
+{-# SPECIALIZE cieZ :: Spectrum Float #-}
+{-# SPECIALIZE cieZ :: Spectrum Double #-}
+cieZ :: (U.Unbox a, Fractional a, Ord a) => Spectrum a
 cieZ =
   mkCIESpectrum
     [ 0.0006061000
