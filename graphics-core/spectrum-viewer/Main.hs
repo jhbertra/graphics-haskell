@@ -30,7 +30,7 @@ import Physics.Spectrum (
  )
 
 main :: IO ()
-main = writePng "output.png" $ generateImage (render emptySpectrum) xRes yRes
+main = writePng "output.png" $ generateImage (render polySpectrum) xRes yRes
 
 xRes :: Int
 xRes = 400
