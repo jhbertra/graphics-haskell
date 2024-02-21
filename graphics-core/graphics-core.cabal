@@ -65,21 +65,39 @@ library
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
+    Physics.Spectrum
 
   other-modules:   Paths_graphics_core
   hs-source-dirs:  src
   build-depends:
     , base
     , comonad
+    , containers
     , distributive
     , ieee
     , lens
     , linear
     , linear-tests
+    , poly
     , QuickCheck
     , random
     , semigroupoids
     , vector
+
+executable spectrum-viewer
+  import:             base
+  hs-source-dirs:     spectrum-viewer
+  type:               exitcode-stdio-1.0
+  main-is:            Main.hs
+  build-depends:
+    , base
+    , graphics-core
+    , JuicyPixels
+    , linear
+    , poly
+
+  build-tool-depends: hspec-discover:hspec-discover
+  ghc-options:        -threaded
 
 test-suite graphics-core-test
   import:             base
@@ -92,7 +110,6 @@ test-suite graphics-core-test
     Paths_graphics_core
     Test.Hspec.QuickCheck.Classes
 
-  autogen-modules:
   build-depends:
     , base
     , graphics-core

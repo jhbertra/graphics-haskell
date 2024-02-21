@@ -15,7 +15,7 @@ cabalProject:
 
   # welcomeMessage = null;
 
-  # packages = [];
+  packages = with pkgs; [ mesa freeglut ];
 
   # scripts = {
   #   foo = {
