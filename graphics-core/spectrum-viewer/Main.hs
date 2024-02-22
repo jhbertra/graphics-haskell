@@ -7,6 +7,7 @@ import Codec.Picture.Types (generateImage)
 import Data.Function (on)
 import Data.Ord (clamp)
 import Data.Word (Word8)
+import Debug.Trace (traceShowId)
 import Geometry.Bounds (Bounds (..))
 import Linear
 import Linear.Affine (Point (..))
@@ -25,7 +26,7 @@ import Physics.Spectrum (
  )
 
 main :: IO ()
-main = writePng "output.png" $ generateImage (render polySpectrum) xRes yRes
+main = writePng "output.png" $ generateImage (render bbSpectrum) xRes yRes
 
 xRes :: Int
 xRes = 400
@@ -50,7 +51,7 @@ render spectrum = \x y -> do
     bg
       | norm rgb <= 1 = 1
       | otherwise = 0
-    rgb = xyzToSRgbLinear $ spectrumToXYZ spectrum
+    rgb = traceShowId $ xyzToSRgbLinear $ spectrumToXYZ spectrum
     Bounds (P (V1 lMin)) (P (V1 lMax)) = visibleBounds spectrum
     yMax = upperBound spectrum
 
@@ -83,7 +84,7 @@ gamma f = floor $ clamp (0, 1) v * 255
       | otherwise = 1.05 * (f ** (1 / 2.4)) - 0.005
 
 polySpectrum :: Spectrum Float
-polySpectrum = SigmoidQuadraticSpectrum 0 (-1 / 40) 10
+polySpectrum = SigmoidQuadraticSpectrum (-1 / 32000) (119 / 3200) (-13521 / 1280)
 
 bbSpectrum :: Spectrum Float
 bbSpectrum = blackbodySpectrum 6500

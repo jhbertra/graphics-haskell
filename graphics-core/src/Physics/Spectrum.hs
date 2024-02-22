@@ -186,59 +186,41 @@ upperBound = \case
   InterpolatedSpectrum points -> foldr max (-infinity) points
   BlackbodySpectrum _ -> 1
 
-integrate :: (RealFloat a) => Bounds1 a -> Spectrum a -> a
+integrate :: forall a. (RealFloat a) => Bounds1 a -> Spectrum a -> a
 integrate bounds@(Bounds (P (V1 a)) (P (V1 b))) s
   | Bounds.null bounds = 0
   | otherwise = case s of
       ConstSpectrum i -> i * range
-      SigmoidQuadraticSpectrum 0 0 z -> sigmoid z * range
-      SigmoidQuadraticSpectrum 0 y 0 -> do
-        let yy = y * y
-        (sqrt (b * b * yy + 1) - y * (a - b) - sqrt (a * a * yy + 1))
-          / (2 * y)
-      SigmoidQuadraticSpectrum 0 y z -> do
-        let yy = y * y
-        let zz1 = z * z + 1
-        let yz2 = 2 * y * z
-        (sqrt (b * b * yy + b * yz2 + zz1) - y * (a - b) - sqrt (a * a * yy + a * yz2 + zz1))
-          / (2 * y)
       AddSpectrum s0 s1 -> integrate bounds s0 + integrate bounds s1
+      MulSpectrum (ConstSpectrum x) y -> x * integrate bounds y
+      MulSpectrum x (ConstSpectrum y) -> y * integrate bounds x
+      MulSpectrum (SampledSpectrum λMin samples) (SampledSpectrum λMin' samples') -> do
+        let go λMin0 samples0 λMin1 samples1 = do
+              let d = fromIntegral $ λMin1 - λMin0
+              integrate bounds $
+                SampledSpectrum λMin1 $
+                  U.zipWith (*) (U.drop d samples0) samples1
+        case compare λMin λMin' of
+          LT -> go λMin samples λMin' samples'
+          EQ -> integrate bounds $ SampledSpectrum λMin $ U.zipWith (*) samples samples'
+          GT -> go λMin' samples' λMin samples
+      MulSpectrum (SampledSpectrum λMin samples) y ->
+        integrate bounds $ SampledSpectrum λMin $ multiplySample (fromIntegral λMin) samples y
+      MulSpectrum x (SampledSpectrum λMin samples) ->
+        integrate bounds $ SampledSpectrum λMin $ multiplySample (fromIntegral λMin) samples x
       SampledSpectrum λMin samples -> do
         let a' = floor a
         let range' = ceiling b - a'
         let skip = max 0 $ a' - fromIntegral λMin
         U.sum $ U.slice skip range' samples
-      InterpolatedSpectrum points -> do
-        let overlapsRange (λ0, _) (λ1, _) = λ0 < b && λ1 > a
-            area λ0 a0 λ1 a1 = delta * (aMin + (aMax - aMin) * 0.5)
-              where
-                aMin = min a0 a1
-                aMax = max a0 a1
-                delta = λ1 - λ0
-            integrateRegion (λ0, a0) (λ1, a1)
-              | a > λ0 =
-                  let t = (a - λ0) / (λ1 - λ0)
-                      a0' = (1 - t) * a0 + t * a1
-                   in area a a0' λ1 a1
-              | b < λ1 =
-                  let t = (b - λ0) / (λ1 - λ0)
-                      a1' = (1 - t) * a0 + t * a1
-                   in area λ0 a0 b a1'
-              | otherwise = area λ0 a0 λ1 a1
-        getSum
-          . foldMap (Sum . uncurry integrateRegion)
-          . takeWhile (uncurry overlapsRange)
-          . dropWhile (not . uncurry overlapsRange)
-          . pairs
-          $ Map.toAscList points
       _ -> foldr ((+) . flip evalSpectrum s . fromInteger) 0 [floor a .. ceiling b]
   where
-    pairs :: [x] -> [(x, x)]
-    pairs [] = []
-    pairs [_] = []
-    pairs (x : y : xs) = (x, y) : pairs (y : xs)
-
     range = b - a
+
+    multiplySample :: (U.Unbox a) => Int -> U.Vector a -> Spectrum a -> U.Vector a
+    multiplySample λMin samples s' =
+      U.generate (U.length samples) \i ->
+        evalSpectrum (fromIntegral $ λMin + i) s' * (samples U.! i)
 {-# INLINE integrate #-}
 
 integrateVisible :: (RealFloat a, Monoid (Bounds1 a)) => Spectrum a -> a
