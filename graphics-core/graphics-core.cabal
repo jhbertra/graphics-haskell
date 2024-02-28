@@ -62,6 +62,7 @@ library
     Geometry.Parametric
     Geometry.Ray
     Geometry.Spherical
+    Graphics.Color
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
@@ -70,6 +71,7 @@ library
   other-modules:   Paths_graphics_core
   hs-source-dirs:  src
   build-depends:
+    , ad
     , base
     , comonad
     , containers
@@ -78,10 +80,14 @@ library
     , lens
     , linear
     , linear-tests
+    , nonlinear-optimization
     , poly
+    , primitive
     , QuickCheck
     , random
+    , reflection
     , semigroupoids
+    , template-haskell
     , vector
 
 executable spectrum-viewer
@@ -91,6 +97,7 @@ executable spectrum-viewer
   build-depends:
     , base
     , graphics-core
+    , hashable
     , JuicyPixels
     , linear
     , poly

@@ -1,6 +1,8 @@
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Geometry.Bounds where
 
@@ -25,7 +27,7 @@ import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1, V2, V3, (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
-import Numeric.IEEE (IEEE (infinity))
+import Numeric.IEEE (IEEE (..))
 import Test.QuickCheck (Arbitrary (..), elements, genericShrink, suchThat)
 import Prelude hiding (null)
 
@@ -66,12 +68,12 @@ instance (U.Unbox (f a)) => M.MVector U.MVector (Bounds f a) where
   basicLength = coerce $ M.basicLength @U.MVector @(Point f a, Point f a)
   basicUnsafeSlice = coerce $ M.basicUnsafeSlice @U.MVector @(Point f a, Point f a)
   basicOverlaps = coerce $ M.basicOverlaps @U.MVector @(Point f a, Point f a)
-  basicUnsafeNew = coerce $ M.basicUnsafeNew @U.MVector @(Point f a, Point f a)
-  basicInitialize = coerce $ M.basicInitialize @U.MVector @(Point f a, Point f a)
-  basicUnsafeCopy = coerce $ M.basicUnsafeCopy @U.MVector @(Point f a, Point f a)
-  basicUnsafeMove = coerce $ M.basicUnsafeMove @U.MVector @(Point f a, Point f a)
-  basicUnsafeGrow = coerce $ M.basicUnsafeGrow @U.MVector @(Point f a, Point f a)
-  basicClear = coerce $ M.basicClear @U.MVector @(Point f a, Point f a)
+  basicUnsafeNew = fmap coerce . M.basicUnsafeNew @U.MVector @(Point f a, Point f a)
+  basicInitialize = M.basicInitialize @U.MVector @(Point f a, Point f a) . coerce
+  basicUnsafeCopy src dest = M.basicUnsafeCopy @U.MVector @(Point f a, Point f a) (coerce src) (coerce dest)
+  basicUnsafeMove src dest = M.basicUnsafeMove @U.MVector @(Point f a, Point f a) (coerce src) (coerce dest)
+  basicUnsafeGrow = (fmap . fmap) coerce . M.basicUnsafeGrow @U.MVector @(Point f a, Point f a) . coerce
+  basicClear = fmap coerce . M.basicClear @U.MVector @(Point f a, Point f a) . coerce
   basicUnsafeReplicate n Bounds{..} = MV_Bounds <$> M.basicUnsafeReplicate n (_minP, _maxP)
   basicUnsafeRead (MV_Bounds v) i = uncurry Bounds <$> M.basicUnsafeRead v i
   basicUnsafeWrite (MV_Bounds v) i Bounds{..} = M.basicUnsafeWrite v i (_minP, _maxP)
@@ -91,11 +93,11 @@ instance (U.Unbox (f a)) => M.MVector U.MVector (Bounds f a) where
   {-# INLINE basicSet #-}
 
 instance (U.Unbox (f a)) => V.Vector U.Vector (Bounds f a) where
-  basicUnsafeFreeze = coerce $ V.basicUnsafeFreeze @U.Vector @(Point f a, Point f a)
-  basicUnsafeThaw = coerce $ V.basicUnsafeThaw @U.Vector @(Point f a, Point f a)
+  basicUnsafeFreeze = fmap coerce . V.basicUnsafeFreeze @U.Vector @(Point f a, Point f a) . coerce
+  basicUnsafeThaw = fmap coerce . V.basicUnsafeThaw @U.Vector @(Point f a, Point f a) . coerce
   basicLength = coerce $ V.basicLength @U.Vector @(Point f a, Point f a)
   basicUnsafeSlice = coerce $ V.basicUnsafeSlice @U.Vector @(Point f a, Point f a)
-  basicUnsafeCopy = coerce $ V.basicUnsafeCopy @U.Vector @(Point f a, Point f a)
+  basicUnsafeCopy src dest = V.basicUnsafeCopy @U.Vector @(Point f a, Point f a) (coerce src) (coerce dest)
   basicUnsafeIndexM (V_Bounds v) i = uncurry Bounds <$> V.basicUnsafeIndexM v i
   elemseq _ Bounds{..} z =
     V.elemseq (undefined :: U.Vector (Point f a)) _minP $
@@ -137,13 +139,15 @@ instance (Additive f, Ord a) => Semigroup (Bounds f a) where
   (<>) = union
   {-# INLINE (<>) #-}
 
-instance {-# OVERLAPPING #-} (Additive f, Applicative f) => Monoid (Bounds f Float) where
-  mempty = nilIEEE
+instance Bounded Float where
+  minBound = -infinity
+  maxBound = infinity
 
-instance {-# OVERLAPPING #-} (Additive f, Applicative f) => Monoid (Bounds f Double) where
-  mempty = nilIEEE
+instance Bounded Double where
+  minBound = -infinity
+  maxBound = infinity
 
-instance {-# OVERLAPPING #-} (Additive f, Ord a, Bounded a, Applicative f) => Monoid (Bounds f a) where
+instance (Additive f, Ord a, Bounded a, Applicative f) => Monoid (Bounds f a) where
   mempty = nil
   {-# INLINE mempty #-}
 
@@ -191,10 +195,6 @@ universal :: (Bounded a, Applicative f) => Bounds f a
 universal = Bounds (pure minBound) (pure maxBound)
 {-# INLINE universal #-}
 
-universalIEEE :: forall f a. (IEEE a, Applicative f) => Bounds f a
-universalIEEE = Bounds (pure (-infinity)) $ pure infinity
-{-# INLINE universalIEEE #-}
-
 union :: (Additive f, Ord a) => Bounds f a -> Bounds f a -> Bounds f a
 union a b =
   Bounds
@@ -205,10 +205,6 @@ union a b =
 nil :: (Bounded a, Applicative f) => Bounds f a
 nil = Bounds (pure maxBound) (pure minBound)
 {-# INLINE nil #-}
-
-nilIEEE :: forall f a. (IEEE a, Applicative f) => Bounds f a
-nilIEEE = Bounds (pure infinity) $ pure (-infinity)
-{-# INLINE nilIEEE #-}
 
 overlaps :: (Ord a, Foldable f, Additive f) => Bounds f a -> Bounds f a -> Bool
 overlaps a b = not $ degenerate $ intersect a b
