@@ -1,5 +1,6 @@
 packages:
   graphics-core
+  integration-monte-carlo
 
 tests: True
 

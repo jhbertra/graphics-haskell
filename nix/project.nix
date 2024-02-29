@@ -18,9 +18,9 @@ let
       compiler-nix-name = lib.mkDefault "ghc96";
 
       flake.variants.profiled = {
-        modules = [{ 
-          enableProfiling = true; 
-          enableLibraryProfiling = true; 
+        modules = [{
+          enableProfiling = true;
+          enableLibraryProfiling = true;
         }];
       };
 

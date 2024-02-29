@@ -1,0 +1,71 @@
+cabal-version: 3.4
+name:          integration-monte-carlo
+version:       0.1.0.0
+synopsis:      Numeric integration via Monte Carlo estimators
+author:        Jamie Bertram
+maintainer:    Jamie Bertram
+copyright:     2024 Jamie Bertram
+license:       MIT
+license-file:  LICENSE
+build-type:    Simple
+
+common base
+  default-language:   Haskell2010
+  default-extensions:
+    AllowAmbiguousTypes
+    BlockArguments
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    EmptyCase
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedRecordDot
+    OverloadedStrings
+    PatternSynonyms
+    PolyKinds
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances
+    ViewPatterns
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wincomplete-uni-patterns
+    -Wunused-packages -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
+
+library
+  import:          base
+  exposed-modules: Numeric.Integration.MonteCarlo
+  other-modules:   Paths_integration_monte_carlo
+  hs-source-dirs:  src
+  build-depends:
+    , base
+    , comonad
+    , containers
+    , ieee
+    , lens
+    , linear
+    , profunctors
+    , vector
