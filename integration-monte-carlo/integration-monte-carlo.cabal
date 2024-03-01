@@ -57,7 +57,10 @@ common base
 
 library
   import:          base
-  exposed-modules: Numeric.Integration.MonteCarlo
+  exposed-modules:
+    Numeric.Integration.MonteCarlo
+    Statistics.Distribution.Linear
+
   other-modules:   Paths_integration_monte_carlo
   hs-source-dirs:  src
   build-depends:
@@ -68,4 +71,6 @@ library
     , lens
     , linear
     , profunctors
+    , random
+    , statistics
     , vector
