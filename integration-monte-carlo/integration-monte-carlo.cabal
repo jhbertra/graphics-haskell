@@ -60,6 +60,9 @@ library
   exposed-modules:
     Numeric.Integration.MonteCarlo
     Statistics.Distribution.Linear
+    Statistics.Distribution.Transform
+    Statistics.Distribution2
+    Statistics.Distribution2.Bilinear
 
   other-modules:   Paths_integration_monte_carlo
   hs-source-dirs:  src

@@ -20,12 +20,14 @@ module Statistics.Distribution.Linear (
   linearU,
   linearB,
   linearV,
+  linearNorm,
 ) where
 
 import Data.Data (Typeable)
 import Data.Maybe (fromMaybe)
 import Data.Ord (clamp)
 import GHC.Stack (HasCallStack)
+import Numeric.Integration.MonteCarlo (weightedIntegrator)
 import Statistics.Distribution (
   ContDistr (..),
   ContGen (..),
@@ -34,8 +36,9 @@ import Statistics.Distribution (
   MaybeVariance (..),
   Mean (..),
   Variance (..),
+  genContinuous,
  )
-import System.Random.Stateful (UniformRange (..))
+import System.Random.Stateful (UniformRange (..), uniformDouble01M)
 
 -- | Proportional linear distribution from (A, U) to (B, V).
 data LinearDistribution = LinearDistribution
@@ -65,12 +68,11 @@ instance Distribution LinearDistribution where
     | u == v = (a - x) / (a - b)
     | otherwise =
         clamp (0, 1) $
-          ((a - x) * ((u - v) * x - 2 * b * u + a * (u + v))) / ((a - b) * (a - b) * (u + v))
+          ((a - x) * ((u - v) * x + (u + v) * a - 2 * u * b)) / ((a - b) * (a - b) * (u + v))
 
 instance ContDistr LinearDistribution where
   density (LinearDistribution a u b v norm) x
-    | x < a = 0
-    | x > b = 1
+    | x < a || x > b = 0
     | x == a = u * norm
     | x == b = v * norm
     | u == v = norm
@@ -110,7 +112,7 @@ instance Variance LinearDistribution where
       / (9 * (u + v) * (u + v))
 
 instance ContGen LinearDistribution where
-  genContVar d = fmap (quantile d) . uniformRM (0, 1)
+  genContVar = genContinuous
 
 -- | Create a linear distribution from (a, u) to (b, v).
 --
@@ -127,7 +129,7 @@ linearDistribution a u b v = fromMaybe (error msg) $ linearDistributionE a u b v
 -- > linearDistributionE a u b v
 --
 -- Returns Nothing if the parameters are invalid. Requires that u, v are
--- positive. Requires that a /= b.
+-- positive and do not sum to zero. Requires that a /= b.
 linearDistributionE :: Double -> Double -> Double -> Double -> Maybe LinearDistribution
 linearDistributionE a u b v = case compare b a of
   LT -> linearDistributionE b v a u
