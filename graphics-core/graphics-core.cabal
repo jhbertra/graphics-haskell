@@ -62,6 +62,7 @@ library
     Geometry.Interaction
     Geometry.Parametric
     Geometry.Ray
+    Geometry.Shape
     Geometry.Spherical
     Graphics.Color
     Linear.Affine.Arbitrary

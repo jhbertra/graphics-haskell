@@ -4,9 +4,7 @@
 
 module Geometry.Ray where
 
-import Control.Comonad (Comonad)
-import Control.Comonad.Traced (Comonad (..))
-import Control.Lens (Field2 (_2), Lens, Traversal', lens, makeLenses, makePrisms, over)
+import Control.Lens (Field2 (_2), Lens', Traversal', lens, makeLenses, makePrisms, over)
 import GHC.Generics (Generic, Generic1)
 import Geometry.Parametric (Parametric (..))
 import Linear (V3, (^*))
@@ -17,9 +15,9 @@ import Test.QuickCheck (Arbitrary, genericShrink, oneof)
 import Test.QuickCheck.Arbitrary (Arbitrary (..))
 
 data Ray a = Ray
-  { _o :: {-# UNPACK #-} Point V3 Float
-  , _d :: {-# UNPACK #-} V3 Float
-  , _rayEnv :: a
+  { _o :: Point V3 a
+  , _d :: V3 a
+  , _time :: a
   }
   deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
 
@@ -29,19 +27,13 @@ instance (Arbitrary a) => Arbitrary (Ray a) where
   arbitrary = Ray <$> arbitrary <*> arbitrary <*> arbitrary
   shrink = genericShrink
 
-instance Comonad Ray where
-  extract = _rayEnv
-  {-# INLINE extract #-}
-  duplicate r@Ray{..} = Ray{_rayEnv = r, ..}
-  {-# INLINE duplicate #-}
-
-instance Parametric (Ray a) V3 Float where
+instance (Num a) => Parametric (Ray a) V3 a where
   pointAt t Ray{..} = _o .+^ _d ^* t
   {-# INLINE pointAt #-}
 
 data RayWithDifferentials a
-  = RayWithNoDifferentials {-# UNPACK #-} (Ray a)
-  | RayWithDifferentials {-# UNPACK #-} (Ray a) {-# UNPACK #-} RayDifferentials
+  = RayWithNoDifferentials (Ray a)
+  | RayWithDifferentials (Ray a) (RayDifferentials a)
   deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
 
 instance (Arbitrary a) => Arbitrary (RayWithDifferentials a) where
@@ -52,10 +44,10 @@ instance (Arbitrary a) => Arbitrary (RayWithDifferentials a) where
       ]
   shrink = genericShrink
 
-rdRay :: Lens (RayWithDifferentials a) (RayWithDifferentials b) (Ray a) (Ray b)
+rdRay :: Lens' (RayWithDifferentials a) (Ray a)
 rdRay = lens get set
   where
-    set :: RayWithDifferentials a -> Ray b -> RayWithDifferentials b
+    set :: RayWithDifferentials a -> Ray a -> RayWithDifferentials a
     set rd r = case rd of
       RayWithNoDifferentials _ -> RayWithNoDifferentials r
       RayWithDifferentials _ ds -> RayWithDifferentials r ds
@@ -66,25 +58,15 @@ rdRay = lens get set
       RayWithDifferentials r _ -> r
     {-# INLINE get #-}
 
-instance Comonad RayWithDifferentials where
-  extract (RayWithNoDifferentials r) = extract r
-  extract (RayWithDifferentials r _) = extract r
-  {-# INLINE extract #-}
-  duplicate rd@(RayWithNoDifferentials Ray{..}) =
-    RayWithNoDifferentials (Ray{_rayEnv = rd, ..})
-  duplicate rd@(RayWithDifferentials Ray{..} ds) =
-    RayWithDifferentials (Ray{_rayEnv = rd, ..}) ds
-  {-# INLINE duplicate #-}
-
-data RayDifferentials = RayDifferentials
-  { _rxOrigin :: {-# UNPACK #-} V3 Float
-  , _ryOrigin :: {-# UNPACK #-} V3 Float
-  , _rxDirection :: {-# UNPACK #-} V3 Float
-  , _ryDirection :: {-# UNPACK #-} V3 Float
+data RayDifferentials a = RayDifferentials
+  { _rxOrigin :: V3 a
+  , _ryOrigin :: V3 a
+  , _rxDirection :: V3 a
+  , _ryDirection :: V3 a
   }
-  deriving (Ord, Eq, Generic, Show, Read)
+  deriving (Ord, Eq, Generic, Show, Read, Functor)
 
-instance Arbitrary RayDifferentials where
+instance (Arbitrary a) => Arbitrary (RayDifferentials a) where
   arbitrary =
     RayDifferentials
       <$> arbitrary
@@ -96,10 +78,10 @@ instance Arbitrary RayDifferentials where
 $(makePrisms ''RayWithDifferentials)
 $(makeLenses ''RayDifferentials)
 
-rdDifferentials :: Traversal' (RayWithDifferentials a) RayDifferentials
+rdDifferentials :: Traversal' (RayWithDifferentials a) (RayDifferentials a)
 rdDifferentials = _RayWithDifferentials . _2
 
-scaleDifferentials :: Float -> RayWithDifferentials a -> RayWithDifferentials a
+scaleDifferentials :: (Num a) => a -> RayWithDifferentials a -> RayWithDifferentials a
 scaleDifferentials s = over rdDifferentials \RayDifferentials{..} ->
   RayDifferentials
     { _rxOrigin = _rxOrigin ^* s
@@ -110,7 +92,7 @@ scaleDifferentials s = over rdDifferentials \RayDifferentials{..} ->
 {-# INLINE scaleDifferentials #-}
 
 class IsRay r where
-  ray :: Lens (r a) (r b) (Ray a) (Ray b)
+  ray :: Lens' (r a) (Ray a)
 
 instance IsRay Ray where
   ray = id

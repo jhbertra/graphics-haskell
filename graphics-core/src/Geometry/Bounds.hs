@@ -6,7 +6,7 @@
 
 module Geometry.Bounds where
 
-import Control.Lens (Index, IxValue, Ixed (..), makeLenses, (^.))
+import Control.Lens (Index, IxValue, Ixed (..), makeLenses, view, (^.))
 import Control.Lens.Traversal (Traversable1 (..))
 import Control.Monad (guard)
 import Data.Coerce (coerce)
@@ -23,7 +23,8 @@ import qualified Data.Vector.Generic as V
 import qualified Data.Vector.Generic.Mutable as M
 import qualified Data.Vector.Unboxed as U
 import GHC.Generics (Generic, Generic1)
-import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1, V2, V3, (^/), _xz, _yz)
+import Geometry.Ray (IsRay (..), Ray (..))
+import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1 (..), V2, V3 (..), (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
@@ -346,3 +347,36 @@ enclosed b
   | degenerate b = negate $ abs $ product $ diagonal b
   | otherwise = product $ diagonal b
 {-# INLINE enclosed #-}
+
+intersectRay :: (IsRay r, Ord a, Fractional a) => r a -> a -> Bounds3 a -> Maybe (Bounds1 a)
+intersectRay
+  (view ray -> Ray (P (V3 ox oy oz)) (V3 dx dy dz) _)
+  tMax
+  (Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) =
+    foldSlab slabZ $ foldSlab slabY $ foldSlab slabX slab0
+    where
+      slab0 = Just $ Bounds (P (V1 0)) (P (V1 tMax))
+      slabX = computeSlab ox dx x0 x1
+      slabY = computeSlab oy dy y0 y1
+      slabZ = computeSlab oz dz z0 z1
+      computeSlab o d p0 p1
+        | d < 0 = Bounds (P (V1 $ (p1 - o) * dInv)) (P (V1 $ (p0 - o) * dInv))
+        | otherwise = Bounds (P (V1 $ (p0 - o) * dInv)) (P (V1 $ (p1 - o) * dInv))
+        where
+          dInv = 1 / d
+      {-# INLINE computeSlab #-}
+      foldSlab _ Nothing = Nothing
+      foldSlab
+        (Bounds (P (V1 tNear)) (P (V1 tFar)))
+        (Just (Bounds (P (V1 t0)) (P (V1 t1))))
+          | t0' > t1' = Nothing
+          | otherwise = Just $ Bounds (P (V1 t0')) (P (V1 t1'))
+          where
+            t0'
+              | tNear > t0 = tNear
+              | otherwise = t0
+            t1'
+              | tFar < t1 = tNear
+              | otherwise = t0
+      {-# INLINE foldSlab #-}
+{-# INLINE intersectRay #-}
