@@ -59,6 +59,7 @@ library
   import:          base
   exposed-modules:
     Geometry.Bounds
+    Geometry.Interaction
     Geometry.Parametric
     Geometry.Ray
     Geometry.Spherical
@@ -77,6 +78,7 @@ library
     , containers
     , distributive
     , ieee
+    , intervals
     , lens
     , linear
     , linear-tests
