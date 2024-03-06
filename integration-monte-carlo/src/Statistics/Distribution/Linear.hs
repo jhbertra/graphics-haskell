@@ -27,7 +27,6 @@ import Data.Data (Typeable)
 import Data.Maybe (fromMaybe)
 import Data.Ord (clamp)
 import GHC.Stack (HasCallStack)
-import Numeric.Integration.MonteCarlo (weightedIntegrator)
 import Statistics.Distribution (
   ContDistr (..),
   ContGen (..),
@@ -38,7 +37,7 @@ import Statistics.Distribution (
   Variance (..),
   genContinuous,
  )
-import System.Random.Stateful (UniformRange (..), uniformDouble01M)
+import Test.QuickCheck
 
 -- | Proportional linear distribution from (A, U) to (B, V).
 data LinearDistribution = LinearDistribution
@@ -84,17 +83,9 @@ instance ContDistr LinearDistribution where
     | x > 1 = error "Statistics.Distribution.Linear.quantile: probability > 1"
     | x == 0 = a
     | x == 1 = b
-    | u == v = a - x * (a + b)
+    | u == v = a - x * (a - b)
     | otherwise =
         (b * u - a * v - (b - a) * sqrt ((1 - x) * u * u + x * v * v)) / (u - v)
-  complQuantile (LinearDistribution a u b v _) x
-    | x < 0 = error "Statistics.Distribution.Linear.complQuantile: probability > 1"
-    | x > 1 = error "Statistics.Distribution.Linear.complQuantile: negative probability"
-    | x == 0 = b
-    | x == 1 = a
-    | u == v = x * (a + b) - a + 1
-    | otherwise =
-        ((1 - b) * u + (a - 1) * v + (b - a) * sqrt ((1 - x) * u * u + x * v * v)) / (u - v)
 
 instance MaybeMean LinearDistribution where
   maybeMean = Just . mean
@@ -137,3 +128,11 @@ linearDistributionE a u b v = case compare b a of
   GT
     | u < 0 || v < 0 || u + v == 0 -> Nothing
     | otherwise -> Just $ LinearDistribution a u b v $ 2 / ((b - a) * (u + v))
+
+instance Arbitrary LinearDistribution where
+  arbitrary = do
+    a <- arbitrary
+    b <- arbitrary `suchThat` (/= a)
+    u <- abs <$> arbitrary
+    v <- abs <$> arbitrary `suchThat` ((/= 0) . (u +))
+    pure $ linearDistribution a u b v
