@@ -65,6 +65,7 @@ library
     Geometry.Ray
     Geometry.Shape
     Geometry.Spherical
+    Geometry.Transform
     Graphics.Color
     Linear.Affine.Arbitrary
     Linear.Approximate
