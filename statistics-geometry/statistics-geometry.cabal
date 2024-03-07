@@ -1,7 +1,7 @@
 cabal-version: 3.4
-name:          integration-monte-carlo
+name:          statistics-geometry
 version:       0.1.0.0
-synopsis:      Numeric integration via Monte Carlo estimators
+synopsis:      Statistical distributions over geometric primatives
 author:        Jamie Bertram
 maintainer:    Jamie Bertram
 copyright:     2024 Jamie Bertram
@@ -56,8 +56,13 @@ common base
 
 library
   import:          base
-  exposed-modules: Numeric.Integration.MonteCarlo
-  other-modules:   Paths_integration_monte_carlo
+  exposed-modules:
+    Statistics.Distribution.Linear
+    Statistics.Distribution2
+    Statistics.Distribution2.Bilinear
+    Statistics.Distribution2.UniformSphere
+
+  other-modules:   Paths_statistics_geometry
   hs-source-dirs:  src
   build-depends:
     , base
@@ -69,3 +74,30 @@ library
     , random
     , statistics
     , vector
+
+test-suite statistics-geometry-test
+  import:             base
+  hs-source-dirs:     test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    Paths_statistics_geometry
+    Statistics.Distribution.LinearSpec
+    Statistics.Distribution2.BilinearSpec
+    Statistics.Distribution2.UniformSphereSpec
+    Test.Hspec.QuickCheck.Classes
+    Test.QuickCheck.Classes.Statistics.Distribution
+    Test.QuickCheck.Classes.Statistics.Distribution2
+
+  build-depends:
+    , base
+    , hspec
+    , ieee
+    , linear
+    , QuickCheck
+    , quickcheck-classes
+    , statistics
+    , statistics-geometry
+
+  build-tool-depends: hspec-discover:hspec-discover
+  ghc-options:        -threaded

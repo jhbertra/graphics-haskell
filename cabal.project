@@ -1,6 +1,7 @@
 packages:
   graphics-core
   integration-monte-carlo
+  statistics-geometry
 
 tests: True
 

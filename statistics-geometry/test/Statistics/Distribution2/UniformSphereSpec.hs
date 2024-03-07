@@ -56,6 +56,30 @@ spec = do
               counterexample ("X: " <> show x) $
                 nearZero $
                   uv - uv'
+    prop "sampleXY cosθ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_XY UniformHemisphereDistribution (P (V2 u v))
+       in cosθ >= 0
+    prop "sampleXY cosθ <= 1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_XY UniformHemisphereDistribution (P (V2 u v))
+       in cosθ <= 1
+    prop "sampleYX cosθ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_YX UniformHemisphereDistribution (P (V2 u v))
+       in cosθ >= 0
+    prop "sampleYX cosθ <= 1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_YX UniformHemisphereDistribution (P (V2 u v))
+       in cosθ <= 1
+    prop "sampleXY ϕ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_XY UniformHemisphereDistribution (P (V2 u v))
+       in ϕ >= 0
+    prop "sampleXY ϕ <= 2pi" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_XY UniformHemisphereDistribution (P (V2 u v))
+       in ϕ <= 2 * pi
+    prop "sampleYX ϕ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_YX UniformHemisphereDistribution (P (V2 u v))
+       in ϕ >= 0
+    prop "sampleYX ϕ <= 2pi" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_YX UniformHemisphereDistribution (P (V2 u v))
+       in ϕ <= 2 * pi
 
   describe "UniformSphere" do
     laws $ distribution2Laws $ Proxy @UniformSphereDistribution
@@ -99,3 +123,27 @@ spec = do
               counterexample ("X: " <> show x) $
                 nearZero $
                   uv - uv'
+    prop "sampleXY cosθ >= -1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_XY UniformSphereDistribution (P (V2 u v))
+       in cosθ >= -1
+    prop "sampleXY cosθ <= 1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_XY UniformSphereDistribution (P (V2 u v))
+       in cosθ <= 1
+    prop "sampleYX cosθ >= -1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_YX UniformSphereDistribution (P (V2 u v))
+       in cosθ >= -1
+    prop "sampleYX cosθ <= 1" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 cosθ _) = sampleContinuous2_YX UniformSphereDistribution (P (V2 u v))
+       in cosθ <= 1
+    prop "sampleXY ϕ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_XY UniformSphereDistribution (P (V2 u v))
+       in ϕ >= 0
+    prop "sampleXY ϕ <= 2pi" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_XY UniformSphereDistribution (P (V2 u v))
+       in ϕ <= 2 * pi
+    prop "sampleYX ϕ >= 0" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_YX UniformSphereDistribution (P (V2 u v))
+       in ϕ >= 0
+    prop "sampleYX ϕ <= 2pi" \(UniformVariable u) (UniformVariable v) ->
+      let P (V2 _ ϕ) = sampleContinuous2_YX UniformSphereDistribution (P (V2 u v))
+       in ϕ <= 2 * pi
