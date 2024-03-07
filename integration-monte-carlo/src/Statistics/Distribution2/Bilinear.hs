@@ -37,6 +37,7 @@ import Linear.Affine
 import Statistics.Distribution (ContDistr, ContGen, Distribution, MaybeMean, MaybeVariance, Mean, Variance)
 import Statistics.Distribution.Linear
 import Statistics.Distribution2 (ContDistr2 (..), Distribution2 (..))
+import Test.QuickCheck
 
 -- | Proportional bilinear distribution over the rectangle of values
 -- (Ax, Ay, S), (Bx, Ay, T), (Ax, By, U), (Bx, By, V)
@@ -226,3 +227,15 @@ bilinearDistributionE ax ay bx by s t u v = case compare bx ax of
           Just $
             BilinearDistribution ax ay bx by s t u v $
               4 / ((ax - bx) * (ay - by) * (s + t + u + v))
+
+instance Arbitrary BilinearDistribution where
+  arbitrary = do
+    ax <- arbitrary
+    bx <- arbitrary `suchThat` (/= ax)
+    ay <- arbitrary
+    by <- arbitrary `suchThat` (/= ay)
+    s <- abs <$> arbitrary
+    t <- abs <$> arbitrary
+    u <- abs <$> arbitrary
+    v <- abs <$> arbitrary `suchThat` ((/= 0) . (s + t + u +))
+    pure $ bilinearDistribution ax ay bx by s t u v

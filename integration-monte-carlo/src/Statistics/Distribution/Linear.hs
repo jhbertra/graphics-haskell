@@ -83,9 +83,17 @@ instance ContDistr LinearDistribution where
     | x > 1 = error "Statistics.Distribution.Linear.quantile: probability > 1"
     | x == 0 = a
     | x == 1 = b
-    | u == v = a - x * (a - b)
+    | u == v = x * (b - a) + a
     | otherwise =
-        (b * u - a * v - (b - a) * sqrt ((1 - x) * u * u + x * v * v)) / (u - v)
+        ((a - b) * sqrt (v * v * x - u * u * (x - 1)) - a * v + b * u) / (u - v)
+  complQuantile (LinearDistribution a u b v _) x
+    | x < 0 = error "Statistics.Distribution.Linear.complQuantile: probability > 1"
+    | x > 1 = error "Statistics.Distribution.Linear.complQuantile: negative probability"
+    | x == 0 = b
+    | x == 1 = a
+    | u == v = x * (a - b) + b
+    | otherwise =
+        ((a - b) * sqrt (u * u * x + v * v * (1 - x)) - a * v + b * u) / (u - v)
 
 instance MaybeMean LinearDistribution where
   maybeMean = Just . mean

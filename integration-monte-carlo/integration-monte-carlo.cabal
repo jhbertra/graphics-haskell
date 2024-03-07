@@ -6,7 +6,6 @@ author:        Jamie Bertram
 maintainer:    Jamie Bertram
 copyright:     2024 Jamie Bertram
 license:       MIT
-license-file:  LICENSE
 build-type:    Simple
 
 common base
@@ -60,20 +59,46 @@ library
   exposed-modules:
     Numeric.Integration.MonteCarlo
     Statistics.Distribution.Linear
-    Statistics.Distribution.Transform
     Statistics.Distribution2
     Statistics.Distribution2.Bilinear
+    Statistics.Distribution2.UniformSphere
 
   other-modules:   Paths_integration_monte_carlo
   hs-source-dirs:  src
   build-depends:
     , base
     , comonad
-    , containers
-    , ieee
     , lens
     , linear
     , profunctors
+    , QuickCheck
     , random
     , statistics
     , vector
+
+test-suite integration-monte-carlo-test
+  import:             base
+  hs-source-dirs:     test
+  type:               exitcode-stdio-1.0
+  main-is:            Spec.hs
+  other-modules:
+    Paths_integration_monte_carlo
+    Statistics.Distribution.LinearSpec
+    Statistics.Distribution2.BilinearSpec
+    Statistics.Distribution2.UniformSphereSpec
+    Test.Hspec.QuickCheck.Classes
+    Test.QuickCheck.Classes.Statistics.Distribution
+    Test.QuickCheck.Classes.Statistics.Distribution2
+
+  build-depends:
+    , base
+    , hspec
+    , ieee
+    , integration-monte-carlo
+    , linear
+    , QuickCheck
+    , quickcheck-classes
+    , statistics
+
+  build-tool-depends: hspec-discover:hspec-discover
+  ghc-options:        -threaded

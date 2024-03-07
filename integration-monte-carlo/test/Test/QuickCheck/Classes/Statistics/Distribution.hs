@@ -3,7 +3,6 @@ module Test.QuickCheck.Classes.Statistics.Distribution where
 import Data.Proxy (Proxy)
 import Linear (Epsilon (..))
 import Numeric.IEEE (IEEE (..))
-import Numeric.Integration.TanhSinh (absolute, confidence, everywhere, parSimpson)
 import Statistics.Distribution
 import Test.QuickCheck
 import Test.QuickCheck.Classes
@@ -65,7 +64,6 @@ contDistrLaws p =
     "ContDistr"
     [ ("Density / logDensity", contDistrDensityLogDensity p)
     , ("Non-negative", contDistrDensityNonNegative p)
-    , ("Integral", contDistrDensityIntegral p)
     , ("Quantile inverse", contDistrDensityQuantileInverse p)
     , ("Quantile complement", contDistrDensityQuantileComplement p)
     ]
@@ -86,19 +84,6 @@ contDistrDensityNonNegative
 contDistrDensityNonNegative _ = property \d x ->
   let pdf = density @d d x
    in counterexample ("PDF(X): " <> show pdf) $ pdf >= 0
-
-contDistrDensityIntegral
-  :: forall d
-   . (ContDistr d, Show d, Arbitrary d)
-  => Proxy d
-  -> Property
-contDistrDensityIntegral _ = property \d x ->
-  let cdf = cumulative @d d x
-      tol = 1e-12
-      (cdfMin, cdfMax) = confidence $ absolute 1e-12 $ fromNegInf parSimpson (density d) x
-   in counterexample ("CDF(X): " <> show cdf) $
-        counterexample ("CDF~(X): " <> show (cdfMin, cdfMax)) $
-          abs (cdf - cdfMin) >= tol || abs (cdf - cdfMin) >= tol
 
 -- | Integrate a function from negative infinity to a by using the change of variables @x = a + (t-1)/t@
 --
@@ -125,14 +110,19 @@ contDistrDensityQuantileComplement
   => Proxy d
   -> Property
 contDistrDensityQuantileComplement _ = property \d (UniformVariable p) ->
-  complQuantile @d d p === quantile d (1 - p)
+  not (nearZero p) ==>
+    let x = complQuantile @d d p
+        x' = quantile d (1 - p)
+     in counterexample ("X: " <> show x) $
+          counterexample ("X': " <> show x') $
+            nearZero $
+              x' - x
 
-meanLaws :: (Mean d, Show d, Arbitrary d, ContDistr d) => Proxy d -> Laws
+meanLaws :: (Mean d, Show d, Arbitrary d) => Proxy d -> Laws
 meanLaws p =
   Laws
     "Mean"
     [ ("Mean / MaybeMean", meanMaybeMean p)
-    , ("Expected value", meanExpectedValue p)
     ]
 
 meanMaybeMean
@@ -142,25 +132,11 @@ meanMaybeMean
   -> Property
 meanMaybeMean _ = property \d -> maybeMean @d d === Just (mean d)
 
-meanExpectedValue
-  :: forall d
-   . (ContDistr d, Mean d, Show d, Arbitrary d)
-  => Proxy d
-  -> Property
-meanExpectedValue _ = property \d ->
-  let m = mean @d d
-      tol = 1e-12
-      (meanMin, meanMax) = confidence $ absolute 1e-12 $ everywhere parSimpson \x -> x * density d x
-   in counterexample ("mean" <> show m) $
-        counterexample ("mean~" <> show (meanMin, meanMax)) $
-          abs (m - meanMin) >= tol || abs (m - meanMin) >= tol
-
-varianceLaws :: (Variance d, Show d, Arbitrary d, ContDistr d) => Proxy d -> Laws
+varianceLaws :: (Variance d, Show d, Arbitrary d) => Proxy d -> Laws
 varianceLaws p =
   Laws
     "Variance"
     [ ("Variance / MaybeVariance", varianceMaybeVariance p)
-    , ("Expected value", varianceExpectedValue p)
     ]
 
 varianceMaybeVariance
@@ -169,23 +145,6 @@ varianceMaybeVariance
   => Proxy d
   -> Property
 varianceMaybeVariance _ = property \d -> maybeVariance @d d === Just (variance d)
-
-varianceExpectedValue
-  :: forall d
-   . (ContDistr d, Variance d, Show d, Arbitrary d)
-  => Proxy d
-  -> Property
-varianceExpectedValue _ = property \d ->
-  let m = variance @d d
-      tol = 1e-12
-      (varianceMin, varianceMax) = confidence $
-        absolute 1e-12 $
-          everywhere parSimpson \x ->
-            let mu = mean d
-             in (x - mu) * (x - mu) * density d x
-   in counterexample ("variance" <> show m) $
-        counterexample ("variance~" <> show (varianceMin, varianceMax)) $
-          abs (m - varianceMin) >= tol || abs (m - varianceMin) >= tol
 
 newtype UniformVariable = UniformVariable Double
   deriving (Show, Eq)

@@ -1,9 +1,10 @@
 module Statistics.Distribution2 where
 
+import Control.Lens ((^.))
 import Data.Kind (Type)
 import Linear
 import Linear.Affine
-import Statistics.Distribution (ContDistr (..), genContinuous)
+import Statistics.Distribution
 import Statistics.Function (square)
 import System.Random.Stateful
 
@@ -138,3 +139,38 @@ genContinuous2 d g = do
   x <- genContinuous (marginal2_X d) g
   y <- genContinuous (conditional2_Y d x) g
   pure $! P $ V2 x y
+
+-- | Transform a random variable /X/ from distribution /d/ to a random variable
+--   /Y/ from distribution /e/ such that /CDF_d(X) = CDF_e(Y)/
+transformDistribution :: (ContDistr d, ContDistr e) => d -> e -> Double -> Double
+transformDistribution d e = quantile e . cumulative d
+
+-- | Sample a 2-D joint probability distribution function by first sampling the
+-- marginal distribution of the first dimension, then the conditional
+-- distribution of the second.
+sampleContinuous2_XY :: (ContDistr2 d) => d -> Point V2 Double -> Point V2 Double
+sampleContinuous2_XY d u = P $ V2 x y
+  where
+    x = quantile (marginal2_X d) $ u ^. _x
+    y = quantile (conditional2_Y d x) $ u ^. _y
+
+invSampleContinuous2_XY :: (ContDistr2 d) => d -> Point V2 Double -> Point V2 Double
+invSampleContinuous2_XY d xy = P $ V2 u v
+  where
+    u = cumulative (marginal2_X d) $ xy ^. _x
+    v = cumulative (conditional2_Y d $ xy ^. _x) $ xy ^. _y
+
+-- | Sample a 2-D joint probability distribution function by first sampling the
+-- marginal distribution of the second dimension, then the conditional
+-- distribution of the first.
+sampleContinuous2_YX :: (ContDistr2 d) => d -> Point V2 Double -> Point V2 Double
+sampleContinuous2_YX d u = P $ V2 x y
+  where
+    y = quantile (marginal2_Y d) $ u ^. _y
+    x = quantile (conditional2_X d y) $ u ^. _x
+
+invSampleContinuous2_YX :: (ContDistr2 d) => d -> Point V2 Double -> Point V2 Double
+invSampleContinuous2_YX d xy = P $ V2 u v
+  where
+    u = cumulative (conditional2_X d $ xy ^. _y) $ xy ^. _x
+    v = cumulative (marginal2_Y d) $ xy ^. _y
