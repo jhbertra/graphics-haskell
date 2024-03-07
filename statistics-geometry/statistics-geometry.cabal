@@ -60,6 +60,7 @@ library
     Statistics.Distribution.Linear
     Statistics.Distribution2
     Statistics.Distribution2.Bilinear
+    Statistics.Distribution2.UniformCone
     Statistics.Distribution2.UniformSphere
 
   other-modules:   Paths_statistics_geometry
@@ -84,6 +85,7 @@ test-suite statistics-geometry-test
     Paths_statistics_geometry
     Statistics.Distribution.LinearSpec
     Statistics.Distribution2.BilinearSpec
+    Statistics.Distribution2.UniformConeSpec
     Statistics.Distribution2.UniformSphereSpec
     Test.Hspec.QuickCheck.Classes
     Test.QuickCheck.Classes.Statistics.Distribution

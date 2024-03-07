@@ -206,14 +206,14 @@ sampleUniformHemisphere u = realToFrac <$> V3 x y z
     z = cosθ
 
 invSampleUniformHemisphere :: (RealFloat a, Epsilon a) => V3 a -> Point V2 a
-invSampleUniformHemisphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> P (V2 u v)
+invSampleUniformHemisphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> u
   where
     cosθ = z
     ϕ = case atan2 y x of
       phi
         | phi < 0 -> phi + twoPi
         | otherwise -> phi
-    P (V2 u v) = invSampleContinuous2_XY UniformHemisphereDistribution $ P $ V2 cosθ ϕ
+    u = invSampleContinuous2_XY UniformHemisphereDistribution $ P $ V2 cosθ ϕ
 
 sampleUniformSphere :: (RealFrac a) => Point V2 a -> V3 a
 sampleUniformSphere u = realToFrac <$> V3 x y z
@@ -225,11 +225,11 @@ sampleUniformSphere u = realToFrac <$> V3 x y z
     z = cosθ
 
 invSampleUniformSphere :: (RealFloat a, Epsilon a) => V3 a -> Point V2 a
-invSampleUniformSphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> P (V2 u v)
+invSampleUniformSphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> u
   where
     cosθ = z
     ϕ = case atan2 y x of
       phi
         | phi < 0 -> phi + twoPi
         | otherwise -> phi
-    P (V2 u v) = invSampleContinuous2_XY UniformSphereDistribution $ P $ V2 cosθ ϕ
+    u = invSampleContinuous2_XY UniformSphereDistribution $ P $ V2 cosθ ϕ
