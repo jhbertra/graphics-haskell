@@ -60,6 +60,7 @@ library
   exposed-modules:
     Geometry.Bounds
     Geometry.Interaction
+    Geometry.Normal
     Geometry.Parametric
     Geometry.Ray
     Geometry.Shape
