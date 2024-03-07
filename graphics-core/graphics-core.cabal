@@ -68,6 +68,7 @@ library
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
+    Numeric.Interval.IEEE
     Physics.Spectrum
 
   other-modules:   Paths_graphics_core
