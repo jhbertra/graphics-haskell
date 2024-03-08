@@ -38,9 +38,9 @@ import Linear.Affine
 import Numeric.IEEE (IEEE (..))
 import Numeric.Interval.IEEE (mulPow2)
 import qualified Numeric.Interval.IEEE as I
-import Statistics.Distribution2 (sampleContinuous2_YX)
+import Statistics.Distribution2 (sampleContinuous2_XY, sampleContinuous2_YX)
 import Statistics.Distribution2.UniformCone
-import Statistics.Distribution2.UniformSphere (sampleUniformSphere)
+import Statistics.Distribution2.UniformSphere (uniformPartialSphereDistribution)
 import Text.Read (Lexeme (..), Read (..), lexP, parens, prec)
 
 data Sphere a = Sphere
@@ -120,23 +120,16 @@ instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
 
   surfaceArea Sphere{..} = _spherePhiMax * _sphereRadius * (_sphereZMax - _sphereZMin)
 
-  sampleSurface (P (V2 u0 u1)) s@Sphere{..} = do
-    -- remap uniform random variables to be proportional to partial sphere mins and maxes
-    -- u0 is proportional to cos θ (ie. z), which we limit by lower and upper bounds.
-    -- Remap u0 to the corresponding valid range on a full sphere.
-    let cosθ = ((1 - u0) * _sphereZMin + u0 * _sphereZMax) / _sphereRadius
-    let u0' = (cosθ + 1) / 2
-    -- u1 is proportional to ϕ, which we limit by an upper bound.
-    -- Remap u1 to the corresponding valid range on a full sphere.
-    let ϕ = u1 * _spherePhiMax
-    let u1' = ϕ / (2 * pi)
-    -- Sample the full sphere with the remapped probabilities and scale by radius.
-    let p' = P $ _sphereRadius *^ sampleUniformSphere (P $ V2 u0' u1')
-    -- Account for possible rounding error by re-projecting point to sphere's
-    -- surface (in pure math, this would be a no-op, but in floating-point
-    -- arithmetic it can make a subtle difference).
-    let p = p' ^* (_sphereRadius / norm p')
-    let pErr = I.vErr 5 p
+  sampleSurface u s@Sphere{..} = do
+    -- Note: cos θ is inversely proportional to θ in the range [0, pi], and
+    -- cos θ = z when converting from cartesian to polar.
+    -- Therefore, cosθMin = zMax and cosθMax = zMin (here, cosθMin denotes
+    -- cos θ_min, NOT min (cos θ) - i.e. cosθMin will be greater than cosθMax).
+    let d = uniformPartialSphereDistribution _sphereZMax _sphereZMin _spherePhiMax
+    let P (V2 cosθ ϕ) = realToFrac <$> sampleContinuous2_XY d (realToFrac <$> u)
+    let sinθ = sqrt $ 1 - cosθ * cosθ
+    let p = P $ _sphereRadius *^ sphericalDirection (SphericalCoordinates sinθ cosθ ϕ)
+    let _ssPoint = I.vErr 5 p
     -- Compute surface normals at p
     let n
           | xor' _sphereIsConcave _sphereTransformSwapsHandedness = negate $ _sphereToRender !!*!! N (unP p)
@@ -145,7 +138,7 @@ instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
     let _ssParametricCoords = toParametric cosθ ϕ s
     pure
       SurfaceSample
-        { _ssPoint = I.fromMidpointAndMargin <$> p <*> pErr
+        { _ssPoint
         , _ssNormal = n
         , _ssParametricCoords
         , _ssPdf = recip $ surfaceArea s
@@ -204,7 +197,7 @@ instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
         let _ssNormal
               | _sphereIsConcave = -n
               | otherwise = n
-        let pErr = I.vErr 5 p
+        let _ssPoint = I.vErr 5 p
         let ϕSphere = case atan2 (p ^. _y) (p ^. _x) of
               phi
                 | phi < 0 -> phi + 2 * pi
@@ -217,7 +210,7 @@ instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
             && _ssParametricCoords ^. _y >= 1
         pure
           SurfaceSample
-            { _ssPoint = I.fromMidpointAndMargin <$> p <*> pErr
+            { _ssPoint
             , _ssNormal
             , _ssParametricCoords
             , _ssPdf = 1 / (2 * pi * complCosθMax)
@@ -417,7 +410,7 @@ interactionFromQuadric :: (Epsilon a, IEEE a) => Ray a -> QuadricIntersection a 
 interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
   _sphereToRender
     !!*!! surfaceInteraction
-      (I.fromMidpointAndMargin <$> _qiPObj <*> pError)
+      siP
       _time
       (Just $ _sphereFromRender !!*!! _d)
       (P $ V2 u v)
@@ -428,7 +421,7 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
       (_sphereTransformSwapsHandedness `xor'` _sphereIsConcave)
   where
     P (V3 xHit yHit zHit) = _qiPObj
-    pError = I.vErr 5 _qiPObj
+    siP = I.vErr 5 _qiPObj
     u = _qiPhi / _spherePhiMax
     cosTheta = zHit / _sphereRadius
     theta = safeAcos cosTheta

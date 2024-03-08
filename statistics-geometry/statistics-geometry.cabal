@@ -68,6 +68,7 @@ library
   build-depends:
     , base
     , comonad
+    , ieee
     , lens
     , linear
     , profunctors

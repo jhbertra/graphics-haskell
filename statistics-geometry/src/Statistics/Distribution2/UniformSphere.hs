@@ -1,135 +1,98 @@
-module Statistics.Distribution2.UniformSphere where
+module Statistics.Distribution2.UniformSphere (
+  UniformSphereDistribution,
+
+  -- * Constructors
+  uniformHemisphereDistribution,
+  uniformSphereDistribution,
+  uniformPartialSphereDistribution,
+
+  -- ** Accessors
+  usCosθMax,
+  usCosθMin,
+  usϕMax,
+
+  -- ** Sampling functions
+  sampleUniformSphere,
+  invSampleUniformSphere,
+) where
 
 import Data.Ord (clamp)
 import Linear
 import Linear.Affine
+import Numeric.IEEE (IEEE (..))
 import Statistics.Distribution
 import Statistics.Distribution2
-import Test.QuickCheck (Arbitrary)
+import Test.QuickCheck (Arbitrary, choose)
 import Test.QuickCheck.Arbitrary (Arbitrary (..))
-
-inv2Pi :: Double
-inv2Pi = 1 / (2 * pi)
-
-inv4Pi :: Double
-inv4Pi = 1 / (4 * pi)
-
-halfPi :: Double
-halfPi = pi / 2
 
 twoPi :: Double
 twoPi = pi * 2
 
-data UniformHemisphereDistribution = UniformHemisphereDistribution
+data UniformSphereDistribution = US
+  { usCosθMin :: {-# UNPACK #-} !Double
+  , usCosθMax :: {-# UNPACK #-} !Double
+  , usϕMax :: {-# UNPACK #-} !Double
+  }
   deriving (Show, Read, Eq, Ord)
 
-instance Arbitrary UniformHemisphereDistribution where
-  arbitrary = pure UniformHemisphereDistribution
+uniformHemisphereDistribution :: UniformSphereDistribution
+uniformHemisphereDistribution = uniformPartialSphereDistribution 1 0 twoPi
 
-instance Distribution2 UniformHemisphereDistribution where
-  cumulative2 _ (clamp (0, 1) -> cosθ) (clamp (0, twoPi) -> ϕ) = cosθ * ϕ * inv2Pi
+uniformSphereDistribution :: UniformSphereDistribution
+uniformSphereDistribution = uniformPartialSphereDistribution 1 (-1) twoPi
 
-instance ContDistr2 UniformHemisphereDistribution where
-  data Marginal2_X UniformHemisphereDistribution = UniformHemisphereMarginalThetaDistribution
-  data Marginal2_Y UniformHemisphereDistribution = UniformHemisphereMarginalPhiDistribution
-  data Conditional2_X UniformHemisphereDistribution = UniformHemisphereConditionalThetaDistribution
-  data Conditional2_Y UniformHemisphereDistribution = UniformHemisphereConditionalPhiDistribution
-  density2 _ cosθ ϕ
-    | cosθ < 0 || cosθ > 1 = 0
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv2Pi
-  marginal2_X _ = UniformHemisphereMarginalThetaDistribution
-  marginal2_Y _ = UniformHemisphereMarginalPhiDistribution
-  conditional2_X _ _ = UniformHemisphereConditionalThetaDistribution
-  conditional2_Y _ _ = UniformHemisphereConditionalPhiDistribution
-
-deriving instance Show (Marginal2_X UniformHemisphereDistribution)
-deriving instance Show (Marginal2_Y UniformHemisphereDistribution)
-deriving instance Show (Conditional2_X UniformHemisphereDistribution)
-deriving instance Show (Conditional2_Y UniformHemisphereDistribution)
-deriving instance Eq (Marginal2_X UniformHemisphereDistribution)
-deriving instance Eq (Marginal2_Y UniformHemisphereDistribution)
-deriving instance Eq (Conditional2_X UniformHemisphereDistribution)
-deriving instance Eq (Conditional2_Y UniformHemisphereDistribution)
-
-instance Arbitrary (Marginal2_X UniformHemisphereDistribution) where
-  arbitrary = pure UniformHemisphereMarginalThetaDistribution
-
-instance Arbitrary (Marginal2_Y UniformHemisphereDistribution) where
-  arbitrary = pure UniformHemisphereMarginalPhiDistribution
-
-instance Arbitrary (Conditional2_X UniformHemisphereDistribution) where
-  arbitrary = pure UniformHemisphereConditionalThetaDistribution
-
-instance Arbitrary (Conditional2_Y UniformHemisphereDistribution) where
-  arbitrary = pure UniformHemisphereConditionalPhiDistribution
-
-instance Distribution (Marginal2_X UniformHemisphereDistribution) where
-  cumulative _ = clamp (0, 1)
-
-instance ContDistr (Marginal2_X UniformHemisphereDistribution) where
-  density _ cosθ
-    | cosθ < 0 || cosθ > 1 = 0
-    | otherwise = 1
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = x
-
-instance Distribution (Marginal2_Y UniformHemisphereDistribution) where
-  cumulative _ = (* inv2Pi) . clamp (0, twoPi)
-
-instance ContDistr (Marginal2_Y UniformHemisphereDistribution) where
-  density _ ϕ
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv2Pi
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = twoPi * x
-
-instance Distribution (Conditional2_X UniformHemisphereDistribution) where
-  cumulative _ = clamp (0, 1)
-
-instance ContDistr (Conditional2_X UniformHemisphereDistribution) where
-  density _ cosθ
-    | cosθ < 0 || cosθ > 1 = 0
-    | otherwise = 1
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = x
-
-instance Distribution (Conditional2_Y UniformHemisphereDistribution) where
-  cumulative _ = (* inv2Pi) . clamp (0, twoPi)
-
-instance ContDistr (Conditional2_Y UniformHemisphereDistribution) where
-  density _ ϕ
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv2Pi
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = twoPi * x
-
-data UniformSphereDistribution = UniformSphereDistribution
-  deriving (Show, Read, Eq, Ord)
+uniformPartialSphereDistribution :: (Real a) => a -> a -> a -> UniformSphereDistribution
+uniformPartialSphereDistribution
+  (clamp (-1, 1) . realToFrac -> cosθMin)
+  (clamp (-1, 1) . realToFrac -> cosθMax)
+  (clamp (0, twoPi) . realToFrac -> ϕMax) = case compare cosθMin cosθMax of
+    LT -> uniformPartialSphereDistribution cosθMax cosθMin ϕMax
+    EQ -> error "uniformPartialSphereDistribution: invalid parameters"
+    GT -> US cosθMin cosθMax ϕMax
 
 instance Arbitrary UniformSphereDistribution where
-  arbitrary = pure UniformSphereDistribution
+  arbitrary = do
+    cosθMax <- choose (0, predIEEE 1)
+    cosθMin <- choose (succIEEE cosθMax, 1)
+    ϕMax <- choose (0, twoPi)
+    pure $ US cosθMin cosθMax ϕMax
+  shrink (US cosθMin cosθMax ϕMax) =
+    (US <$> shrinkTowards 1 cosθMin <*> pure cosθMax <*> pure ϕMax)
+      <> (US cosθMin <$> shrinkTowards 0 cosθMax <*> pure ϕMax)
+      <> (US cosθMin cosθMax <$> shrinkTowards twoPi ϕMax)
+
+shrinkTowards :: Double -> Double -> [Double]
+shrinkTowards target a
+  | δ == 0 = []
+  | nearZero δ = [target]
+  | otherwise = [a + (δ * 0.5)]
+  where
+    δ = target - a
 
 instance Distribution2 UniformSphereDistribution where
-  cumulative2 _ (clamp (-1, 1) -> cosθ) (clamp (0, twoPi) -> ϕ) = (cosθ + 1) * ϕ * inv4Pi
+  cumulative2
+    (US cosθMin cosθMax ϕMax)
+    (clamp (cosθMax, cosθMin) -> cosθ)
+    (clamp (0, ϕMax) -> ϕ) = (ϕ * (cosθ - cosθMax)) / (ϕMax * (cosθMin - cosθMax))
 
 instance ContDistr2 UniformSphereDistribution where
-  data Marginal2_X UniformSphereDistribution = UniformSphereMarginalThetaDistribution
-  data Marginal2_Y UniformSphereDistribution = UniformSphereMarginalPhiDistribution
-  data Conditional2_X UniformSphereDistribution = UniformSphereConditionalThetaDistribution
-  data Conditional2_Y UniformSphereDistribution = UniformSphereConditionalPhiDistribution
-  density2 _ cosθ ϕ
-    | cosθ < -1 || cosθ > 1 = 0
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv4Pi
-  marginal2_X _ = UniformSphereMarginalThetaDistribution
-  marginal2_Y _ = UniformSphereMarginalPhiDistribution
-  conditional2_X _ _ = UniformSphereConditionalThetaDistribution
-  conditional2_Y _ _ = UniformSphereConditionalPhiDistribution
+  data Marginal2_X UniformSphereDistribution
+    = UHM_cosθ
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+  newtype Marginal2_Y UniformSphereDistribution = UHM_ϕ Double
+  data Conditional2_X UniformSphereDistribution
+    = UHC_cosθ
+        {-# UNPACK #-} !Double
+        {-# UNPACK #-} !Double
+  newtype Conditional2_Y UniformSphereDistribution = UHC_ϕ Double
+  density2 (US cosθMin cosθMax ϕMax) cosθ ϕ
+    | cosθ < cosθMin || cosθ > cosθMax || ϕ < 0 || ϕ > ϕMax = 0
+    | otherwise = recip $ ϕMax * (cosθMin - cosθMax)
+  marginal2_X (US cosθMin cosθMax _) = UHM_cosθ cosθMin cosθMax
+  marginal2_Y (US _ _ ϕMax) = UHM_ϕ ϕMax
+  conditional2_X (US cosθMin cosθMax _) _ = UHC_cosθ cosθMin cosθMax
+  conditional2_Y (US _ _ ϕMax) _ = UHC_ϕ ϕMax
 
 deriving instance Show (Marginal2_X UniformSphereDistribution)
 deriving instance Show (Marginal2_Y UniformSphereDistribution)
@@ -141,95 +104,78 @@ deriving instance Eq (Conditional2_X UniformSphereDistribution)
 deriving instance Eq (Conditional2_Y UniformSphereDistribution)
 
 instance Arbitrary (Marginal2_X UniformSphereDistribution) where
-  arbitrary = pure UniformSphereMarginalThetaDistribution
+  arbitrary = marginal2_X <$> arbitrary
 
 instance Arbitrary (Marginal2_Y UniformSphereDistribution) where
-  arbitrary = pure UniformSphereMarginalPhiDistribution
+  arbitrary = marginal2_Y <$> arbitrary
 
 instance Arbitrary (Conditional2_X UniformSphereDistribution) where
-  arbitrary = pure UniformSphereConditionalThetaDistribution
+  arbitrary = conditional2_X <$> arbitrary <*> arbitrary
 
 instance Arbitrary (Conditional2_Y UniformSphereDistribution) where
-  arbitrary = pure UniformSphereConditionalPhiDistribution
+  arbitrary = conditional2_Y <$> arbitrary <*> arbitrary
 
 instance Distribution (Marginal2_X UniformSphereDistribution) where
-  cumulative _ (clamp (-1, 1) -> cosθ) = (cosθ + 1) / 2
+  cumulative (UHM_cosθ cosθMin cosθMax) =
+    (/ (cosθMin - cosθMax)) . subtract cosθMax . clamp (cosθMax, cosθMin)
 
 instance ContDistr (Marginal2_X UniformSphereDistribution) where
-  density _ cosθ
-    | cosθ < -1 || cosθ > 1 = 0
-    | otherwise = 0.5
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = 2 * x - 1
+  density (UHM_cosθ cosθMin cosθMax) cosθ
+    | cosθ < cosθMax || cosθ > cosθMin = 0
+    | otherwise = 1 / (cosθMin - cosθMax)
+  quantile (UHM_cosθ cosθMin cosθMax) ξ
+    | ξ < 0 || ξ > 1 = error "quantile: argument out of range"
+    | otherwise = ξ * (cosθMin - cosθMax) + cosθMax
 
 instance Distribution (Marginal2_Y UniformSphereDistribution) where
-  cumulative _ = (* inv2Pi) . clamp (0, twoPi)
+  cumulative (UHM_ϕ ϕMax) = (/ ϕMax) . clamp (0, ϕMax)
 
 instance ContDistr (Marginal2_Y UniformSphereDistribution) where
-  density _ ϕ
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv2Pi
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = twoPi * x
+  density (UHM_ϕ ϕMax) ϕ
+    | ϕ < 0 || ϕ > ϕMax = 0
+    | otherwise = recip ϕMax
+  quantile (UHM_ϕ ϕMax) ξ
+    | ξ < 0 || ξ > 1 = error "quantile: argument out of range"
+    | otherwise = ϕMax * ξ
 
 instance Distribution (Conditional2_X UniformSphereDistribution) where
-  cumulative _ (clamp (-1, 1) -> cosθ) = (cosθ + 1) / 2
+  cumulative (UHC_cosθ cosθMin cosθMax) =
+    (/ (cosθMin - cosθMax)) . subtract cosθMax . clamp (cosθMax, cosθMin)
 
 instance ContDistr (Conditional2_X UniformSphereDistribution) where
-  density _ cosθ
-    | cosθ < -1 || cosθ > 1 = 0
-    | otherwise = 0.5
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = 2 * x - 1
+  density (UHC_cosθ cosθMin cosθMax) cosθ
+    | cosθ < cosθMax || cosθ > cosθMin = 0
+    | otherwise = 1 / (cosθMin - cosθMax)
+  quantile (UHC_cosθ cosθMin cosθMax) ξ
+    | ξ < 0 || ξ > 1 = error "quantile: argument out of range"
+    | otherwise = ξ * (cosθMin - cosθMax) + cosθMax
 
 instance Distribution (Conditional2_Y UniformSphereDistribution) where
-  cumulative _ = (* inv2Pi) . clamp (0, twoPi)
+  cumulative (UHC_ϕ ϕMax) = (/ ϕMax) . clamp (0, ϕMax)
 
 instance ContDistr (Conditional2_Y UniformSphereDistribution) where
-  density _ ϕ
-    | ϕ < 0 || ϕ > twoPi = 0
-    | otherwise = inv2Pi
-  quantile _ x
-    | x < 0 || x > 1 = error "quantile: argument out of range"
-    | otherwise = twoPi * x
+  density (UHC_ϕ ϕMax) ϕ
+    | ϕ < 0 || ϕ > ϕMax = 0
+    | otherwise = recip ϕMax
+  quantile (UHC_ϕ ϕMax) ξ
+    | ξ < 0 || ξ > 1 = error "quantile: argument out of range"
+    | otherwise = ϕMax * ξ
 
-sampleUniformHemisphere :: (RealFrac a) => Point V2 a -> V3 a
-sampleUniformHemisphere u = realToFrac <$> V3 x y z
+sampleUniformSphere :: (RealFrac a) => UniformSphereDistribution -> Point V2 a -> V3 a
+sampleUniformSphere d u = realToFrac <$> V3 x y z
   where
-    P (V2 cosθ ϕ) = sampleContinuous2_XY UniformHemisphereDistribution $ realToFrac <$> u
+    P (V2 cosθ ϕ) = sampleContinuous2_XY d $ realToFrac <$> u
     sinθ = sqrt $ 1 - cosθ * cosθ
     x = sinθ * cos ϕ
     y = sinθ * sin ϕ
     z = cosθ
 
-invSampleUniformHemisphere :: (RealFloat a, Epsilon a) => V3 a -> Point V2 a
-invSampleUniformHemisphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> u
+invSampleUniformSphere :: (RealFloat a, Epsilon a) => UniformSphereDistribution -> V3 a -> Point V2 a
+invSampleUniformSphere d (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> u
   where
     cosθ = z
     ϕ = case atan2 y x of
       phi
         | phi < 0 -> phi + twoPi
         | otherwise -> phi
-    u = invSampleContinuous2_XY UniformHemisphereDistribution $ P $ V2 cosθ ϕ
-
-sampleUniformSphere :: (RealFrac a) => Point V2 a -> V3 a
-sampleUniformSphere u = realToFrac <$> V3 x y z
-  where
-    P (V2 cosθ ϕ) = sampleContinuous2_XY UniformSphereDistribution $ realToFrac <$> u
-    sinθ = sqrt $ 1 - cosθ * cosθ
-    x = sinθ * cos ϕ
-    y = sinθ * sin ϕ
-    z = cosθ
-
-invSampleUniformSphere :: (RealFloat a, Epsilon a) => V3 a -> Point V2 a
-invSampleUniformSphere (fmap realToFrac . normalize -> V3 x y z) = realToFrac <$> u
-  where
-    cosθ = z
-    ϕ = case atan2 y x of
-      phi
-        | phi < 0 -> phi + twoPi
-        | otherwise -> phi
-    u = invSampleContinuous2_XY UniformSphereDistribution $ P $ V2 cosθ ϕ
+    u = invSampleContinuous2_XY d $ P $ V2 cosθ ϕ

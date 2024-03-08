@@ -55,12 +55,13 @@ data SphericalCoordinates a = SphericalCoordinates
   }
   deriving (Ord, Eq, Show, Read, Foldable, Typeable)
 
-sphericalDirection :: (Ord a, Floating a) => SphericalCoordinates a -> V3 a
+sphericalDirection :: (Ord a, Floating a, Epsilon a) => SphericalCoordinates a -> V3 a
 sphericalDirection SphericalCoordinates{..} =
-  V3
-    (clamp (-1, 1) sinθ * cos ϕ)
-    (clamp (-1, 1) sinθ * sin ϕ)
-    (clamp (-1, 1) cosθ)
+  normalize $
+    V3
+      (clamp (-1, 1) sinθ * cos ϕ)
+      (clamp (-1, 1) sinθ * sin ϕ)
+      (clamp (-1, 1) cosθ)
 
 safeAcos :: (Floating a, Ord a) => a -> a
 safeAcos = acos . clamp (-1, 1)

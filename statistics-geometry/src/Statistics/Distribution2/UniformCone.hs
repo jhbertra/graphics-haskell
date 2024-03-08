@@ -18,8 +18,13 @@ import Linear
 import Linear.Affine
 import Statistics.Distribution
 import Statistics.Distribution2
-import Statistics.Distribution2.UniformSphere (inv2Pi, twoPi)
 import Test.QuickCheck
+
+twoPi :: Double
+twoPi = pi * 2
+
+inv2Pi :: Double
+inv2Pi = recip twoPi
 
 newtype UniformConeDistribution = UC
   { ucCosThetaMax :: Double
