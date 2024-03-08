@@ -17,8 +17,11 @@ module Numeric.Interval.IEEE (
   quadratic,
   singleton,
   gamma,
+  vErr,
 ) where
 
+import Linear
+import Linear.Affine (Point)
 import Numeric.IEEE (IEEE (..))
 
 data Interval a = I !a !a
@@ -29,6 +32,14 @@ data Interval a = I !a !a
 gamma :: (IEEE a) => Integer -> a
 gamma n = epsilon / (2 / fromInteger n - epsilon)
 {-# INLINE gamma #-}
+
+{-# SPECIALIZE vErr :: Integer -> Point V3 Float -> Point V3 Float #-}
+{-# SPECIALIZE vErr :: Integer -> Point V3 Double -> Point V3 Double #-}
+{-# SPECIALIZE vErr :: Integer -> V3 Float -> V3 Float #-}
+{-# SPECIALIZE vErr :: Integer -> V3 Double -> V3 Double #-}
+vErr :: (IEEE a, Additive f, Num (f a)) => Integer -> f a -> f a
+vErr n f = gamma n *^ abs f
+{-# INLINE vErr #-}
 
 (...) :: (Ord a) => a -> a -> Interval a
 a ... b = I (min a b) (max a b)

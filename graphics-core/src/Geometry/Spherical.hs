@@ -65,6 +65,9 @@ sphericalDirection SphericalCoordinates{..} =
 safeAcos :: (Floating a, Ord a) => a -> a
 safeAcos = acos . clamp (-1, 1)
 
+safeSqrt :: (Floating a, Ord a) => a -> a
+safeSqrt = sqrt . max 0
+
 sphericalθ :: (Ord a, Floating a) => V3 a -> a
 sphericalθ (V3 _ _ z) = safeAcos z
 
@@ -184,7 +187,6 @@ equalAreaSquareToSphere (P (V2 x y)) = do
   let z = copySign (1 - r²) signedDistance
   let cosϕ = copySign (cos ϕ) u
   let sinϕ = copySign (sin ϕ) v
-  let safeSqrt = sqrt . max 0
   V3
     (cosϕ * r * safeSqrt (2 - r²))
     (sinϕ * r * safeSqrt (2 - r²))
@@ -196,7 +198,6 @@ equalAreaSphereToSquare (V3 x y z) = do
   let x' = abs x
   let y' = abs y
   let z' = abs z
-  let safeSqrt = sqrt . max 0
   let r = safeSqrt $ 1 - z'
   let a = max x y
   let b = min x y
@@ -262,7 +263,6 @@ subtend p b = do
     then allDirections
     else do
       let sin²θMax = r² / distance²
-      let safeSqrt = sqrt . max 0
       let cosθMax = safeSqrt $ 1 - sin²θMax
       directionCone (o .-. p) cosθMax
 

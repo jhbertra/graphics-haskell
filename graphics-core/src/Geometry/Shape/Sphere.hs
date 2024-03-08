@@ -1,0 +1,479 @@
+module Geometry.Shape.Sphere (
+  Sphere,
+  sphere,
+  QuadricIntersection (..),
+  _sphereRadius,
+  sphereRadius,
+  _sphereZMin,
+  sphereZMin,
+  _sphereZMax,
+  sphereZMax,
+  _sphereThetaMin,
+  sphereThetaMin,
+  _sphereThetaMax,
+  sphereThetaMax,
+  _spherePhiMax,
+  spherePhiMax,
+  _sphereIsConcave,
+  sphereIsConcave,
+) where
+
+import Control.Applicative ((<|>))
+import Control.Lens (Lens', lens, view, (^.))
+import Control.Monad (guard)
+import Data.Coerce (coerce)
+import Data.Function (on)
+import Data.Maybe (fromMaybe, isJust)
+import Data.Ord (clamp)
+import GHC.Show (showSpace)
+import qualified Geometry.Bounds as Bounds
+import Geometry.Interaction (SurfaceInteraction (..), surfaceInteraction)
+import Geometry.Normal (Normal (..))
+import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
+import Geometry.Shape (RayIntersection (..), ReferencePoint (..), Shape (..), SurfaceSample (..))
+import Geometry.Spherical (SphericalCoordinates (..), allDirections, safeAcos, safeSqrt, sphericalDirection)
+import Geometry.Transform (ApplyTransform (..), Transform, frameFromZ, fromLocal, swapsHandedness)
+import Linear
+import Linear.Affine
+import Numeric.IEEE (IEEE (..))
+import Numeric.Interval.IEEE (mulPow2)
+import qualified Numeric.Interval.IEEE as I
+import Statistics.Distribution2 (sampleContinuous2_YX)
+import Statistics.Distribution2.UniformCone
+import Statistics.Distribution2.UniformSphere (sampleUniformSphere)
+import Text.Read (Lexeme (..), Read (..), lexP, parens, prec)
+
+data Sphere a = Sphere
+  { _sphereRadius :: a
+  , _sphereZMin :: a
+  , _sphereZMax :: a
+  , _sphereThetaMin :: a
+  , _sphereThetaMax :: a
+  , _spherePhiMax :: a
+  , _sphereIsConcave :: Bool
+  , _sphereFromRender :: Transform a
+  , _sphereToRender :: Transform a
+  , _sphereTransformSwapsHandedness :: Bool
+  }
+
+instance (Eq a) => Eq (Sphere a) where
+  a == b =
+    on (==) _sphereRadius a b
+      && on (==) _sphereZMin a b
+      && on (==) _sphereZMax a b
+      && on (==) _spherePhiMax a b
+      && on (==) _sphereIsConcave a b
+  a /= b =
+    on (/=) _sphereRadius a b
+      || on (/=) _sphereZMin a b
+      || on (/=) _sphereZMax a b
+      || on (/=) _spherePhiMax a b
+      || on (/=) _sphereIsConcave a b
+
+instance (Ord a) => Ord (Sphere a) where
+  compare a b =
+    on compare _sphereRadius a b
+      <> on compare _sphereZMin a b
+      <> on compare _sphereZMax a b
+      <> on compare _spherePhiMax a b
+      <> on compare _sphereIsConcave a b
+
+instance (Show a) => Show (Sphere a) where
+  showsPrec p Sphere{..} =
+    showParen
+      (p > 10)
+      ( showString "sphere"
+          . showSpace
+          . showsPrec 11 _sphereToRender
+          . showSpace
+          . showsPrec 11 _sphereFromRender
+          . showSpace
+          . showsPrec 11 _sphereIsConcave
+          . showSpace
+          . showsPrec 11 _sphereRadius
+          . showSpace
+          . showsPrec 11 _sphereZMin
+          . showSpace
+          . showsPrec 11 _sphereZMax
+          . showSpace
+          . showsPrec 11 _spherePhiMax
+      )
+
+instance (Floating a, Read a, Ord a) => Read (Sphere a) where
+  readPrec = parens $ prec 10 do
+    Ident "sphere" <- lexP
+    sphere <$> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec
+
+instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
+  bounds Sphere{..} =
+    Bounds.Bounds
+      (_sphereToRender !!*!! P (V3 (-_sphereRadius) (-_sphereRadius) _sphereZMin))
+      (_sphereToRender !!*!! P (V3 _sphereRadius _sphereRadius _sphereZMax))
+
+  normalBounds _ = allDirections
+
+  intersectRay (view ray -> r) tMax s = do
+    isect@QuadricIntersection{..} <- intersectRayQuadric r tMax s
+    pure $ RayIntersection (interactionFromQuadric r isect s) _qiTHit
+
+  rayIntersects (view ray -> r) tMax = isJust . intersectRayQuadric r tMax
+
+  surfaceArea Sphere{..} = _spherePhiMax * _sphereRadius * (_sphereZMax - _sphereZMin)
+
+  sampleSurface (P (V2 u0 u1)) s@Sphere{..} = do
+    -- remap uniform random variables to be proportional to partial sphere mins and maxes
+    -- u0 is proportional to cos θ (ie. z), which we limit by lower and upper bounds.
+    -- Remap u0 to the corresponding valid range on a full sphere.
+    let cosθ = ((1 - u0) * _sphereZMin + u0 * _sphereZMax) / _sphereRadius
+    let u0' = (cosθ + 1) / 2
+    -- u1 is proportional to ϕ, which we limit by an upper bound.
+    -- Remap u1 to the corresponding valid range on a full sphere.
+    let ϕ = u1 * _spherePhiMax
+    let u1' = ϕ / (2 * pi)
+    -- Sample the full sphere with the remapped probabilities and scale by radius.
+    let p' = P $ _sphereRadius *^ sampleUniformSphere (P $ V2 u0' u1')
+    -- Account for possible rounding error by re-projecting point to sphere's
+    -- surface (in pure math, this would be a no-op, but in floating-point
+    -- arithmetic it can make a subtle difference).
+    let p = p' ^* (_sphereRadius / norm p')
+    let pErr = I.vErr 5 p
+    -- Compute surface normals at p
+    let n
+          | xor' _sphereIsConcave _sphereTransformSwapsHandedness = negate $ _sphereToRender !!*!! N (unP p)
+          | otherwise = _sphereToRender !!*!! N (unP p)
+    -- Compute u, v coordinates at p
+    let _ssParametricCoords = toParametric cosθ ϕ s
+    pure
+      SurfaceSample
+        { _ssPoint = I.fromMidpointAndMargin <$> p <*> pErr
+        , _ssNormal = n
+        , _ssParametricCoords
+        , _ssPdf = recip $ surfaceArea s
+        , _ssTime = 0
+        }
+
+  surfacePdf _ = recip . surfaceArea
+
+  sampleSurfaceFrom rp@ReferencePoint{..} u s@Sphere{..}
+    -- If the observer is inside the sphere, sample any position on the sphere
+    | squaredDistanceToCenter <= _sphereRadius * _sphereRadius = do
+        SurfaceSample{..} <- sampleSurface u s
+        -- vector from observer point to sample point
+        let ωi = I.midpoint <$> _ssPoint .-. _rpPoint
+        -- Squared distance of ωi
+        let r = quadrance ωi
+        -- If the distance is zero, the sample point is not valid.
+        guard $ r > 0
+        -- Transform the Area-based sphere PDF to a solid-angle-based PDF by
+        -- dividing by a factor of |cos θ| / |ωi|^2, where θ is the angle between
+        -- ωi and the surface normal n.
+        let cosθ = case _rpNormals of
+              Nothing -> 1 -- We are sampling from a point without a normal (i.e. a medium), choose 1 for the cosine factor.
+              Just (N n, _) -> abs $ dot n $ negate $ normalize ωi
+        -- If the sampled point lies tangent to the surface, the sample is
+        -- invalid.
+        guard $ cosθ > 0
+        pure
+          SurfaceSample
+            { _ssTime = _rpTime
+            , _ssPdf = _ssPdf * r / cosθ
+            , ..
+            }
+    -- Otherwise, sample a position on the visible portion of the sphere by
+    -- sampling a direction within the cone subtended by sphere from the
+    -- observer.
+    | otherwise = do
+        let sinθMax = _sphereRadius / sqrt squaredDistanceToCenter
+        let sin2θMax = sinθMax * sinθMax
+        let (sin2θ, complCosθMax, cosθ, ϕ)
+              -- Angle is too small to use normal cone sampling, compute sample
+              -- values via Taylor series expansion.
+              | sin2θMax < smallSin2θMax =
+                  (sin2θMax * u ^. _x, sin2θMax / 2, sqrt $ 1 - sin2θ, u ^. _y * 2 * pi)
+              | otherwise =
+                  let cosθMax = safeSqrt $ 1 - sin2θMax
+                   in case fmap realToFrac $ sampleContinuous2_YX (uniformConeDistribution $ realToFrac cosθMax) $ realToFrac <$> u of
+                        P (V2 cosθ' ϕ') -> (1 - cosθ' * cosθ', 1 - cosθMax, cosθ', ϕ')
+        let cosα =
+              sin2θ / sinθMax
+                + cosθ * safeSqrt (1 - sin2θ / sin2θMax)
+        let sinα = safeSqrt $ 1 - cosα * cosα
+        let ω = sphericalDirection $ SphericalCoordinates sinα cosα ϕ
+        let n = normalize $ N $ fromLocal (-ω) $ frameFromZ $ normalize ωc
+        let p = pCenter + _sphereRadius *^ coerce n
+        let _ssNormal
+              | _sphereIsConcave = -n
+              | otherwise = n
+        let pErr = I.vErr 5 p
+        let ϕSphere = case atan2 (p ^. _y) (p ^. _x) of
+              phi
+                | phi < 0 -> phi + 2 * pi
+                | otherwise -> phi
+        let _ssParametricCoords = toParametric (p ^. _z / _sphereRadius) ϕSphere s
+        guard $
+          _ssParametricCoords ^. _x <= 0
+            && _ssParametricCoords ^. _x >= 1
+            && _ssParametricCoords ^. _y <= 0
+            && _ssParametricCoords ^. _y >= 1
+        pure
+          SurfaceSample
+            { _ssPoint = I.fromMidpointAndMargin <$> p <*> pErr
+            , _ssNormal
+            , _ssParametricCoords
+            , _ssPdf = 1 / (2 * pi * complCosθMax)
+            , _ssTime = _rpTime
+            }
+    where
+      -- Point at the center of the sphere
+      pCenter = _sphereToRender !!*!! origin
+      -- Observer point, adjusted for error to ensure it is inside the sphere
+      -- if it should be.
+      pObserver = offsetRayOriginTo pCenter rp
+      -- Vector from observer to origin of sphere.
+      ωc = pCenter .-. pObserver
+      squaredDistanceToCenter = quadrance ωc
+
+  surfacePdfFrom rp@ReferencePoint{..} ωi s@Sphere{..}
+    | squaredDistanceToCenter <= _sphereRadius * _sphereRadius = fromMaybe 0 do
+        let r = spawnRay ωi rp
+        QuadricIntersection{..} <- intersectRayQuadric r infinity s
+        -- Transform the Area-based sphere PDF to a solid-angle-based PDF by
+        -- dividing by a factor of |cos θ| / |r|^2, where θ is the angle between
+        -- r and the surface normal n, and r is the vector from the observer
+        -- point to the sample point.
+        let cosθ = case _rpNormals of
+              Nothing -> 1 -- We are sampling from a point without a normal (i.e. a medium), choose 1 for the cosine factor.
+              Just (N n, _) -> abs $ dot n $ -ωi
+        -- If the sampled point lies tangent to the surface, the sample is
+        -- invalid.
+        guard $ cosθ > 0
+        let squaredDistanceToPoint = qdA (I.midpoint <$> _rpPoint) _qiPObj
+        pure $ squaredDistanceToPoint / (surfaceArea s * cosθ)
+    | otherwise =
+        let sin2θMax = _sphereRadius * _sphereRadius / squaredDistanceToCenter
+            complCosθMax
+              | sin2θMax < smallSin2θMax = sin2θMax / 2
+              | otherwise = 1 - safeSqrt (1 - sin2θMax)
+         in 1 / (2 * pi * complCosθMax)
+    where
+      -- Point at the center of the sphere
+      pCenter = _sphereToRender !!*!! origin
+      -- Observer point, adjusted for error to ensure it is inside the sphere
+      -- if it should be.
+      pObserver = offsetRayOriginTo pCenter rp
+      -- Vector from observer to origin of sphere.
+      ωc = pCenter .-. pObserver
+      squaredDistanceToCenter = quadrance ωc
+
+smallSin2θMax :: (Fractional a) => a
+smallSin2θMax = 0.00068523
+
+toParametric :: (Floating a, Ord a) => a -> a -> Sphere a -> Point V2 a
+toParametric cosθ ϕ Sphere{..} = P $ V2 u v
+  where
+    θ = safeAcos cosθ
+    u = ϕ / _spherePhiMax
+    v = (θ - _sphereThetaMin) / (_sphereThetaMax - _sphereThetaMin)
+
+sphere
+  :: (Floating a, Ord a)
+  => Transform a
+  -> Transform a
+  -> Bool
+  -> a
+  -> a
+  -> a
+  -> a
+  -> Sphere a
+sphere _sphereToRender _sphereFromRender _sphereIsConcave (abs -> radius) zMin zMax phiMax =
+  Sphere
+    { _sphereRadius = radius
+    , _sphereZMin
+    , _sphereZMax
+    , _sphereThetaMin = acos $ _sphereZMin / radius
+    , _sphereThetaMax = acos $ _sphereZMax / radius
+    , _spherePhiMax = clamp (0, 2 * pi) phiMax
+    , _sphereIsConcave
+    , _sphereFromRender
+    , _sphereToRender
+    , _sphereTransformSwapsHandedness = swapsHandedness _sphereToRender
+    }
+  where
+    _sphereZMin = clamp (-radius, radius) $ min zMin zMax
+    _sphereZMax = clamp (-radius, radius) $ max zMin zMax
+
+sphereRadius :: (Floating a, Ord a) => Lens' (Sphere a) a
+sphereRadius = lens _sphereRadius \Sphere{..} radius ->
+  let zMin = clamp (-radius, radius) _sphereZMin
+      zMax = clamp (-radius, radius) _sphereZMax
+   in Sphere
+        { _sphereRadius = radius
+        , _sphereThetaMin = acos $ zMin / radius
+        , _sphereThetaMax = acos $ zMax / radius
+        , ..
+        }
+
+sphereZMin :: (Floating a, Ord a) => Lens' (Sphere a) a
+sphereZMin = lens _sphereRadius \Sphere{..} zMin ->
+  let zMin' = clamp (-_sphereRadius, _sphereRadius) zMin
+      zMax = max zMin' _sphereZMax
+   in Sphere
+        { _sphereThetaMin = acos $ zMin' / _sphereRadius
+        , _sphereThetaMax = acos $ zMax / _sphereRadius
+        , ..
+        }
+
+sphereZMax :: (Floating a, Ord a) => Lens' (Sphere a) a
+sphereZMax = lens _sphereRadius \Sphere{..} zMax ->
+  let zMax' = clamp (-_sphereRadius, _sphereRadius) zMax
+      zMin = min zMax' _sphereZMin
+   in Sphere
+        { _sphereThetaMin = acos $ zMin / _sphereRadius
+        , _sphereThetaMax = acos $ zMax' / _sphereRadius
+        , ..
+        }
+
+sphereThetaMin :: (Floating a, Ord a) => Lens' (Sphere a) a
+sphereThetaMin = lens _sphereRadius \Sphere{..} thetaMin ->
+  let piOver2 = pi / 2
+      thetaMin' = clamp (-piOver2, piOver2) thetaMin
+      thetaMax = max thetaMin' _sphereThetaMax
+   in Sphere
+        { _sphereZMin = cos thetaMin' * _sphereRadius
+        , _sphereZMax = cos thetaMax * _sphereRadius
+        , ..
+        }
+
+sphereThetaMax :: (Floating a, Ord a) => Lens' (Sphere a) a
+sphereThetaMax = lens _sphereRadius \Sphere{..} thetaMax ->
+  let piOver2 = pi / 2
+      thetaMax' = clamp (-piOver2, piOver2) thetaMax
+      thetaMin = min thetaMax' _sphereThetaMin
+   in Sphere
+        { _sphereZMin = cos thetaMin * _sphereRadius
+        , _sphereZMax = cos thetaMax' * _sphereRadius
+        , ..
+        }
+
+spherePhiMax :: (Floating a, Ord a) => Lens' (Sphere a) a
+spherePhiMax = lens _spherePhiMax \s phiMax ->
+  s{_spherePhiMax = clamp (0, 2 * pi) phiMax}
+
+sphereIsConcave :: Lens' (Sphere a) Bool
+sphereIsConcave = lens _sphereIsConcave \s _sphereIsConcave -> s{_sphereIsConcave}
+
+data QuadricIntersection a = QuadricIntersection
+  { _qiTHit :: a
+  , _qiPObj :: Point V3 a
+  , _qiPhi :: a
+  }
+  deriving (Eq, Ord, Show, Read, Functor)
+
+intersectRayQuadric :: (IEEE a) => Ray a -> a -> Sphere a -> Maybe (QuadricIntersection a)
+intersectRayQuadric Ray{..} tMax Sphere{..} = do
+  guard $ discriminant >= 0
+  let rootDiscriminant = sqrt discriminant
+      q
+        | I.midpoint b < 0 = -0.5 * (b - rootDiscriminant)
+        | otherwise = -0.5 * (b + rootDiscriminant)
+      t0 = q / a
+      t1 = c / q
+      (tNear, tFar)
+        | t0 > t1 = (t1, t0)
+        | otherwise = (t0, t1)
+      validateHit t = do
+        guard (I.sup t <= tMax && I.inf t > 0)
+        let o' = P $ I.midpoint <$> o
+            d' = I.midpoint <$> d
+            pHit' = o' .+^ I.midpoint t *^ d'
+            P (V3 xHit yHit zHit) = pHit' ^* (_sphereRadius / norm pHit')
+            xHit'
+              | xHit == 0 && yHit == 0 = 1e-5 * _sphereRadius
+              | otherwise = xHit
+            pHit = P $ V3 xHit' yHit zHit
+            phi' = atan2 yHit xHit'
+            phi
+              | phi' < 0 = phi' + 2 * pi
+              | otherwise = phi'
+        guard $
+          (_sphereZMin <= -_sphereRadius || zHit >= _sphereZMin)
+            && (_sphereZMax >= _sphereRadius || zHit <= _sphereZMax)
+            && phi <= _spherePhiMax
+        pure $ QuadricIntersection (I.midpoint t) pHit phi
+  validateHit tNear <|> validateHit tFar
+  where
+    fromRender = I.singleton <$> _sphereFromRender
+    P o@(V3 ox oy oz) = fromRender !!*!! (I.singleton <$> _o)
+    d@(V3 dx dy dz) = fromRender !!*!! (I.singleton <$> _d)
+    a = I.square dx + I.square dy + I.square dz
+    b = I.mulPow2 2 $ dx * ox + dy * oy + dz * oz
+    ri = I.singleton _sphereRadius
+    c = I.square dx + I.square dy + I.square dz - I.square ri
+    v = o - b / (a + a) *^ d
+    len = norm v
+    discriminant = mulPow2 4 $ a * (ri + len) * (ri - len)
+
+interactionFromQuadric :: (Epsilon a, IEEE a) => Ray a -> QuadricIntersection a -> Sphere a -> SurfaceInteraction a
+interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
+  _sphereToRender
+    !!*!! surfaceInteraction
+      (I.fromMidpointAndMargin <$> _qiPObj <*> pError)
+      _time
+      (Just $ _sphereFromRender !!*!! _d)
+      (P $ V2 u v)
+      dpdu
+      dpdv
+      dndu
+      dndv
+      (_sphereTransformSwapsHandedness `xor'` _sphereIsConcave)
+  where
+    P (V3 xHit yHit zHit) = _qiPObj
+    pError = I.vErr 5 _qiPObj
+    u = _qiPhi / _spherePhiMax
+    cosTheta = zHit / _sphereRadius
+    theta = safeAcos cosTheta
+    thetaRange = _sphereThetaMax - _sphereThetaMin
+    v = (theta - _sphereThetaMin) / thetaRange
+    zProj = sqrt $ xHit * xHit + yHit * yHit
+    cosPhi = xHit / zProj
+    sinPhi = yHit / zProj
+    sinTheta = safeSqrt $ 1 - cosTheta * cosTheta
+    dpdu =
+      V3
+        (-_spherePhiMax * yHit)
+        (_spherePhiMax * xHit)
+        0
+    dpdv =
+      thetaRange
+        *^ V3
+          (zHit * cosPhi)
+          (zHit * sinPhi)
+          (-_sphereRadius * sinTheta)
+    d²pdu² = -_spherePhiMax * _spherePhiMax *^ V3 xHit yHit 0
+    d²pdvdv = thetaRange * zHit * _spherePhiMax *^ V3 (-sinPhi) cosPhi 0
+    d²pdv² = -thetaRange * thetaRange *^ unP _qiPObj
+    _E = quadrance dpdu
+    _F = dot dpdu dpdv
+    _G = quadrance dpdv
+    n = normalize $ cross dpdu dpdv
+    e = dot n d²pdu²
+    f = dot n d²pdvdv
+    g = dot n d²pdv²
+    _EGF2 = _E * _G - _F * _F
+    invEGF2
+      | _EGF2 == 0 = 0
+      | otherwise = recip _EGF2
+    dndu =
+      N $
+        (f * _F - e * _G) * invEGF2 *^ dpdu
+          + (e * _F - f * _E) * invEGF2 *^ dpdv
+    dndv =
+      N $
+        (g * _F - f * _G) * invEGF2 *^ dpdu
+          + (f * _F - g * _E) * invEGF2 *^ dpdv
+
+xor' :: Bool -> Bool -> Bool
+xor' False False = False
+xor' False True = True
+xor' True False = True
+xor' True True = False

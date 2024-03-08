@@ -12,7 +12,6 @@ import Data.Functor.Alt (Apply)
 import Data.Functor.Bind (Bind)
 import Data.Functor.Classes
 import Data.Ix (Ix)
-import Data.Ord (clamp)
 import Data.Reflection (Reifies)
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic, Generic1)

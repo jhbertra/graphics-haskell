@@ -6,11 +6,15 @@ module Geometry.Ray where
 
 import Control.Lens (Field2 (_2), Lens', Traversal', lens, makeLenses, makePrisms, over)
 import GHC.Generics (Generic, Generic1)
+import Geometry.Normal (Normal (..))
 import Geometry.Parametric (Parametric (..))
-import Linear (V3, (^*))
-import Linear.Affine (Affine (..), Point (..))
+import Linear (Metric (..), V3, (*^), (^*))
+import Linear.Affine (Affine (..), Point (..), unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
+import Numeric.IEEE (IEEE (..))
+import Numeric.Interval.IEEE (Interval)
+import qualified Numeric.Interval.IEEE as I
 import Test.QuickCheck (Arbitrary, genericShrink, oneof)
 import Test.QuickCheck.Arbitrary (Arbitrary (..))
 
@@ -99,3 +103,30 @@ instance IsRay Ray where
 
 instance IsRay RayWithDifferentials where
   ray = rdRay
+
+class RayOrigin f where
+  offsetRayOrigin :: (IEEE a) => V3 a -> f a -> Point V3 a
+  offsetRayOriginTo :: (IEEE a) => Point V3 a -> f a -> Point V3 a
+  spawnRay :: (IEEE a) => V3 a -> f a -> Ray a
+  spawnRayTo :: (IEEE a) => Point V3 a -> f a -> Ray a
+
+offsetRayOrigin' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> V3 a -> Point V3 a
+offsetRayOrigin' p (N n) ω = roundAway <$> P offset <*> p
+  where
+    offset
+      | dot ω n < 0 = negate $ dot (abs n) (I.midpoint <$> unP p) *^ n
+      | otherwise = dot (abs n) (I.midpoint <$> unP p) *^ n
+    roundAway offset_i ((+ offset_i) . I.midpoint -> p_i) =
+      case compare offset_i 0 of
+        GT -> succIEEE p_i
+        EQ -> p_i
+        LT -> predIEEE p_i
+
+offsetRayOriginTo' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> Point V3 a -> Point V3 a
+offsetRayOriginTo' p n = offsetRayOrigin' p n . (.-. (I.midpoint <$> p))
+
+spawnRay' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> V3 a -> a -> Ray a
+spawnRay' p n ω = Ray (offsetRayOrigin' p n ω) ω
+
+spawnRayTo' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> Point V3 a -> a -> Ray a
+spawnRayTo' p n = spawnRay' p n . (.-. (I.midpoint <$> p))

@@ -17,6 +17,7 @@ import Linear (
   V3 (..),
   V4 (V4),
   axisAngle,
+  cross,
   det33,
   dot,
   identity,
@@ -27,12 +28,13 @@ import Linear (
   (!*),
   (!*!),
   (*!!),
+  (*^),
   (^*),
   (^/),
  )
 import Linear.Affine (Affine (..), Point (..), unP)
 import qualified Linear.Projection as P
-import Numeric.IEEE (IEEE)
+import Numeric.IEEE (IEEE (copySign))
 import qualified Numeric.Interval.IEEE as I
 import Text.Read (Lexeme (..), Read (..), lexP, parens, prec)
 
@@ -87,9 +89,9 @@ instance (Eq a, Fractional a) => ApplyTransform (Point V3) a where
 instance (Num a) => ApplyTransform V3 a where
   UnsafeTransform{..} !!*!! v = fmap (^. _xyz) (_transformM ^. _xyz) !* v
 
-instance (Num a) => ApplyTransform (Normal V3) a where
+instance (Floating a, Epsilon a) => ApplyTransform (Normal V3) a where
   UnsafeTransform{..} !!*!! (N v) =
-    N $ fmap (^. _xyz) (transpose _transformMInv ^. _xyz) !* v
+    normalize $ N $ fmap (^. _xyz) (transpose _transformMInv ^. _xyz) !* v
 
 instance (IEEE a) => ApplyTransform Ray a where
   (!!*!!) t = snd . transformRay t 0
@@ -288,3 +290,47 @@ ortho left right bottom top near far =
 
 swapsHandedness :: (Num a, Ord a) => Transform a -> Bool
 swapsHandedness (UnsafeTransform m _) = det33 (fmap (^. _xyz) (m ^. _xyz)) < 0
+
+data Frame a = Frame
+  { _frameX :: V3 a
+  , _frameY :: V3 a
+  , _frameZ :: V3 a
+  }
+  deriving (Show, Read, Eq, Ord, Functor)
+
+frameFromXZ :: (Num a) => V3 a -> V3 a -> Frame a
+frameFromXZ x z = Frame x (cross z x) z
+
+frameFromXY :: (Num a) => V3 a -> V3 a -> Frame a
+frameFromXY x y = Frame x y (cross x y)
+
+frameFromX :: (IEEE a) => V3 a -> Frame a
+frameFromX x = case coordinateSystem x of
+  (y, z) -> Frame x y z
+
+frameFromY :: (IEEE a) => V3 a -> Frame a
+frameFromY y = case coordinateSystem y of
+  (x, z) -> Frame x y z
+
+frameFromZ :: (IEEE a) => V3 a -> Frame a
+frameFromZ z = case coordinateSystem z of
+  (x, y) -> Frame x y z
+
+toLocal :: (Num a) => V3 a -> Frame a -> V3 a
+toLocal v Frame{..} =
+  V3
+    (dot v _frameX)
+    (dot v _frameY)
+    (dot v _frameZ)
+
+fromLocal :: (Num a) => V3 a -> Frame a -> V3 a
+fromLocal (V3 x y z) Frame{..} = x *^ _frameX + y *^ _frameY + z *^ _frameZ
+
+coordinateSystem :: (IEEE a) => V3 a -> (V3 a, V3 a)
+coordinateSystem (V3 x y z) = (v2, v3)
+  where
+    sign = copySign 1 z
+    a = -1 / sign + z
+    b = x * y * a
+    v2 = V3 (1 + sign + x * x * a) (sign * b) (-sign * x)
+    v3 = V3 b (sign + y * y * a) (-y)

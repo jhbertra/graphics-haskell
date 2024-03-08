@@ -6,7 +6,7 @@
 
 module Geometry.Bounds where
 
-import Control.Lens (Index, IxValue, Ixed (..), makeLenses, view, (^.))
+import Control.Lens (Fold, Index, IxValue, Ixed (..), folding, makeLenses, view, (^.))
 import Control.Lens.Traversal (Traversable1 (..))
 import Control.Monad (guard)
 import Data.Coerce (coerce)
@@ -24,7 +24,7 @@ import qualified Data.Vector.Generic.Mutable as M
 import qualified Data.Vector.Unboxed as U
 import GHC.Generics (Generic, Generic1)
 import Geometry.Ray (IsRay (..), Ray (..))
-import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1 (..), V2, V3 (..), (^/), _xz, _yz)
+import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1 (..), V2 (..), V3 (..), (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
 import Linear.Arbitrary ()
@@ -254,6 +254,26 @@ diagonal b = _maxP b .-. _minP b
 corner :: (Additive f, Applicative f) => f Extreme -> Bounds f a -> Point f a
 corner extremes b = resolveExtreme <$> P extremes <*> _minP b <*> _maxP b
 {-# INLINE corner #-}
+
+corners2 :: Fold (Bounds2 a) (Point V2 a)
+corners2 = folding \(Bounds (P (V2 x0 y0)) (P (V2 x1 y1))) ->
+  [ P $ V2 x0 y0
+  , P $ V2 x0 y1
+  , P $ V2 x1 y0
+  , P $ V2 x1 y1
+  ]
+
+corners3 :: Fold (Bounds3 a) (Point V3 a)
+corners3 = folding \(Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) ->
+  [ P $ V3 x0 y0 z0
+  , P $ V3 x0 y0 z1
+  , P $ V3 x0 y1 z0
+  , P $ V3 x0 y1 z1
+  , P $ V3 x1 y0 z0
+  , P $ V3 x1 y0 z1
+  , P $ V3 x1 y1 z0
+  , P $ V3 x1 y1 z1
+  ]
 
 surfaceArea :: (Num a) => Bounds3 a -> a
 surfaceArea b =
