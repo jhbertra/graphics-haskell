@@ -19,6 +19,7 @@ import Linear (
   axisAngle,
   cross,
   det33,
+  det44,
   dot,
   identity,
   inv44,
@@ -36,6 +37,7 @@ import Linear.Affine (Affine (..), Point (..), unP)
 import qualified Linear.Projection as P
 import Numeric.IEEE (IEEE (copySign))
 import qualified Numeric.Interval.IEEE as I
+import Test.QuickCheck hiding (scale)
 import Text.Read (Lexeme (..), Read (..), lexP, parens, prec)
 
 data Transform a = UnsafeTransform
@@ -126,12 +128,26 @@ transformMInv = lens _transformMInv $ const $ invTransform . transform
 invTransform :: Transform a -> Transform a
 invTransform (UnsafeTransform m mInv) = UnsafeTransform mInv m
 
+detTransform :: (Num a) => Transform a -> a
+detTransform (UnsafeTransform m _) = det44 m
+
 transposeTransform :: Transform a -> Transform a
 transposeTransform (UnsafeTransform m mInv) =
   UnsafeTransform (transpose m) (transpose mInv)
 
 isIdentity :: (Eq a, Num a) => Transform a -> Bool
 isIdentity = (== identity) . _transformM
+
+instance (Arbitrary a, Floating a, Epsilon a) => Arbitrary (Transform a) where
+  arbitrary = sized \case
+    0 -> oneof leaves
+    n -> oneof $ resize (n `div` 2) ((!!*!!) <$> arbitrary <*> arbitrary) : leaves
+    where
+      leaves =
+        [ translate <$> arbitrary
+        , scale <$> arbitrary
+        , rotate <$> arbitrary <*> arbitrary
+        ]
 
 translate :: (Num a) => V3 a -> Transform a
 translate (V3 x y z) =

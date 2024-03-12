@@ -40,7 +40,7 @@ class Shape s a | s -> a where
 
   sampleSurface :: Point V2 a -> s -> Maybe (SurfaceSample a)
 
-  surfacePdf :: SurfaceInteraction a -> s -> a
+  surfacePdf :: (Interaction i a) => i -> s -> a
 
   sampleSurfaceFrom :: ReferencePoint a -> Point V2 a -> s -> Maybe (SurfaceSample a)
 

@@ -5,6 +5,7 @@ module Statistics.Distribution2.UniformSphere (
   uniformHemisphereDistribution,
   uniformSphereDistribution,
   uniformPartialSphereDistribution,
+  uniformPartialSphereDistributionE,
 
   -- ** Accessors
   usCosθMax,
@@ -16,6 +17,7 @@ module Statistics.Distribution2.UniformSphere (
   invSampleUniformSphere,
 ) where
 
+import Data.Maybe (fromMaybe)
 import Data.Ord (clamp)
 import Linear
 import Linear.Affine
@@ -42,13 +44,20 @@ uniformSphereDistribution :: UniformSphereDistribution
 uniformSphereDistribution = uniformPartialSphereDistribution 1 (-1) twoPi
 
 uniformPartialSphereDistribution :: (Real a) => a -> a -> a -> UniformSphereDistribution
-uniformPartialSphereDistribution
+uniformPartialSphereDistribution cosθMin cosθMax =
+  fromMaybe (error "uniformPartialSphereDistribution: invalid parameters")
+    . uniformPartialSphereDistributionE cosθMin cosθMax
+
+uniformPartialSphereDistributionE :: (Real a) => a -> a -> a -> Maybe UniformSphereDistribution
+uniformPartialSphereDistributionE
   (clamp (-1, 1) . realToFrac -> cosθMin)
   (clamp (-1, 1) . realToFrac -> cosθMax)
   (clamp (0, twoPi) . realToFrac -> ϕMax) = case compare cosθMin cosθMax of
-    LT -> uniformPartialSphereDistribution cosθMax cosθMin ϕMax
-    EQ -> error "uniformPartialSphereDistribution: invalid parameters"
-    GT -> US cosθMin cosθMax ϕMax
+    LT -> uniformPartialSphereDistributionE cosθMax cosθMin ϕMax
+    EQ -> Nothing
+    GT
+      | ϕMax == 0 -> Nothing
+      | otherwise -> Just $ US cosθMin cosθMax ϕMax
 
 instance Arbitrary UniformSphereDistribution where
   arbitrary = do

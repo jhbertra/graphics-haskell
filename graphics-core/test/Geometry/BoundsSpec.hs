@@ -30,26 +30,26 @@ import Type.Reflection (Typeable, typeRep)
 
 spec :: Spec
 spec = do
-  concreteBoundsSpec @V2 @Int universal do
+  concreteBoundsSpec @V2 @Int do
     prop "lerpBounds / offsetI" \f (NonNullBounds b) -> do
       let p = lerpBounds @V2 @Int f b
       counterexample (show p) $ offsetI p b === f
     prop "centroidI inside" \(NonDegenerateBounds b) -> inside (centroidI @V2 @Int b) b
     prop "pointsWithin inside" \(NonNullBounds b) ->
       forAll (elements $ pointsWithin @V2 @Int b) (`inside` b)
-  concreteBoundsSpec @V2 @Float universalFloat do
+  concreteBoundsSpec @V2 @Float do
     prop "lerpBounds / offset" \f (NonNullBounds b) -> do
       let p = lerpBounds @V2 @Float f b
       counterexample (show p) $ offset p b ==~ f
     prop "centroid inside" \(NonDegenerateBounds b) -> inside (centroid @V2 @Float b) b
-  concreteBoundsSpec @V3 @Int universal do
+  concreteBoundsSpec @V3 @Int do
     prop "lerpBounds / offsetI" \f (NonNullBounds b) -> do
       let p = lerpBounds @V3 @Int f b
       counterexample (show p) $ offsetI p b === f
     prop "centroidI inside" \(NonDegenerateBounds b) -> inside (centroidI @V3 @Int b) b
     prop "pointsWithin inside" \(NonNullBounds b) ->
       forAll (elements $ pointsWithin @V3 @Int b) (`inside` b)
-  concreteBoundsSpec @V3 @Float universalFloat do
+  concreteBoundsSpec @V3 @Float do
     prop "lerpBounds / offset" \f (NonNullBounds b) -> do
       let p = lerpBounds @V3 @Float f b
       counterexample (show p) $ offset p b ==~ f
@@ -62,6 +62,7 @@ concreteBoundsSpec
      , Show a
      , Read a
      , Arbitrary a
+     , Bounded a
      , forall x. (Read x) => Read (f x)
      , forall x. (Show x) => Show (f x)
      , forall x. (Eq x) => Eq (f x)
@@ -69,16 +70,14 @@ concreteBoundsSpec
      , forall x. (Arbitrary x) => Arbitrary (f x)
      , Traversable f
      , Applicative f
-     , Monoid (Bounds f a)
      , Additive f
      , Num a
      , Ord a
      , Random a
      )
-  => Bounds f a
+  => Spec
   -> Spec
-  -> Spec
-concreteBoundsSpec u extraSpec = describe (show $ typeRep @(Bounds f a)) do
+concreteBoundsSpec extraSpec = describe (show $ typeRep @(Bounds f a)) do
   let bounds = Proxy @(Bounds f a)
   let boundsF = Proxy @(Bounds f)
   laws $ eqLaws bounds
@@ -108,7 +107,7 @@ concreteBoundsSpec u extraSpec = describe (show $ typeRep @(Bounds f a)) do
       Bounds.union @f @a a (Bounds.intersect b c)
         === (Bounds.union a b `Bounds.intersect` Bounds.union a c)
     prop "identity" \a -> Bounds.union @f @a a mempty === a
-    prop "annulment" \a -> Bounds.union a u === u
+    prop "annulment" \a -> Bounds.union @f @a a universal === universal
     prop "idempotent" \a -> Bounds.union @f @a a a === a
   describe "intersect" do
     prop "commutative" \a b -> Bounds.intersect @f @a a b === Bounds.intersect b a
@@ -117,7 +116,7 @@ concreteBoundsSpec u extraSpec = describe (show $ typeRep @(Bounds f a)) do
       Bounds.intersect @f @a a (Bounds.union b c)
         === (Bounds.intersect a b `Bounds.union` Bounds.intersect a c)
     prop "annulment" \a -> Bounds.intersect @f @a a mempty === mempty
-    prop "identity" \a -> Bounds.intersect a u === a
+    prop "identity" \a -> Bounds.intersect @f @a a universal === a
     prop "idempotent" \a -> Bounds.intersect @f @a a a === a
   prop "overlaps ==> not degenerate" \a b ->
     counterexample ("intersect a b: " <> show (Bounds.intersect a b)) $

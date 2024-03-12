@@ -120,6 +120,8 @@ test-suite graphics-core-test
   main-is:            Spec.hs
   other-modules:
     Geometry.BoundsSpec
+    Geometry.Shape.SphereSpec
+    Geometry.ShapeSpec
     Linear.V2.ArbitrarySpec
     Paths_graphics_core
     Test.Hspec.QuickCheck.Classes
@@ -128,10 +130,12 @@ test-suite graphics-core-test
     , base
     , graphics-core
     , hspec
+    , ieee
     , linear
     , QuickCheck
     , quickcheck-classes
     , random
+    , statistics-geometry
 
   build-tool-depends: hspec-discover:hspec-discover
   ghc-options:        -threaded

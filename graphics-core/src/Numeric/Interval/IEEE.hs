@@ -122,7 +122,7 @@ instance (IEEE a) => Num (Interval a) where
   {-# INLINE (-) #-}
   negate = decreasing negate
   {-# INLINE negate #-}
-  I a a' * I b b' =
+  I a b * I a' b' =
     I
       (minimum $ mulRoundDown <$> [a, b] <*> [a', b'])
       (maximum $ mulRoundUp <$> [a, b] <*> [a', b'])
@@ -237,7 +237,7 @@ square i
 
 mulPow2 :: (IEEE a) => a -> Interval a -> Interval a
 mulPow2 e (I a b)
-  | isPow2OrZero = (a * e) ... (a * b)
+  | isPow2OrZero = (a * e) ... (b * e)
   | otherwise = error "mulPow2: not a power of 2"
   where
     isPow2OrZero =
@@ -285,7 +285,7 @@ sqrtRoundUp :: (IEEE a) => a -> a
 sqrtRoundUp = succIEEE . sqrt
 
 sqrtRoundDown :: (IEEE a) => a -> a
-sqrtRoundDown = predIEEE . sqrt
+sqrtRoundDown = max 0 . predIEEE . sqrt
 
 -- arguments are period, range, derivative, function, and interval
 -- we require that each period of the function include precisely one local minimum and one local maximum

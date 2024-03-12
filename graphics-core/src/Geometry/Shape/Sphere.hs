@@ -1,21 +1,26 @@
 module Geometry.Shape.Sphere (
-  Sphere,
-  sphere,
   QuadricIntersection (..),
-  _sphereRadius,
-  sphereRadius,
-  _sphereZMin,
-  sphereZMin,
-  _sphereZMax,
-  sphereZMax,
-  _sphereThetaMin,
-  sphereThetaMin,
-  _sphereThetaMax,
-  sphereThetaMax,
-  _spherePhiMax,
-  spherePhiMax,
+  Sphere,
+  _sphereFromRender,
+  _sphereTransformSwapsHandedness,
   _sphereIsConcave,
+  _spherePhiMax,
+  _sphereRadius,
+  _sphereThetaMax,
+  _sphereThetaMin,
+  _sphereToRender,
+  _sphereZMax,
+  _sphereZMin,
+  sphere,
   sphereIsConcave,
+  spherePhiMax,
+  sphereRadius,
+  sphereThetaMax,
+  sphereThetaMin,
+  sphereZMax,
+  sphereZMin,
+  sphereDistribution,
+  shrinkTowards,
 ) where
 
 import Control.Applicative ((<|>))
@@ -32,7 +37,15 @@ import Geometry.Normal (Normal (..))
 import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
 import Geometry.Shape (RayIntersection (..), ReferencePoint (..), Shape (..), SurfaceSample (..))
 import Geometry.Spherical (SphericalCoordinates (..), allDirections, safeAcos, safeSqrt, sphericalDirection)
-import Geometry.Transform (ApplyTransform (..), Transform, frameFromZ, fromLocal, swapsHandedness)
+import Geometry.Transform (
+  ApplyTransform (..),
+  Transform,
+  detTransform,
+  frameFromZ,
+  fromLocal,
+  invTransform,
+  swapsHandedness,
+ )
 import Linear
 import Linear.Affine
 import Numeric.IEEE (IEEE (..))
@@ -40,7 +53,12 @@ import Numeric.Interval.IEEE (mulPow2)
 import qualified Numeric.Interval.IEEE as I
 import Statistics.Distribution2 (sampleContinuous2_XY, sampleContinuous2_YX)
 import Statistics.Distribution2.UniformCone
-import Statistics.Distribution2.UniformSphere (uniformPartialSphereDistribution)
+import Statistics.Distribution2.UniformSphere (
+  UniformSphereDistribution,
+  uniformPartialSphereDistributionE,
+ )
+import System.Random (Random)
+import Test.QuickCheck
 import Text.Read (Lexeme (..), Read (..), lexP, parens, prec)
 
 data Sphere a = Sphere
@@ -104,11 +122,12 @@ instance (Floating a, Read a, Ord a) => Read (Sphere a) where
     Ident "sphere" <- lexP
     sphere <$> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec
 
-instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
+instance (IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
   bounds Sphere{..} =
-    Bounds.Bounds
-      (_sphereToRender !!*!! P (V3 (-_sphereRadius) (-_sphereRadius) _sphereZMin))
-      (_sphereToRender !!*!! P (V3 _sphereRadius _sphereRadius _sphereZMax))
+    _sphereToRender
+      !!*!! Bounds.Bounds
+        (P (V3 (-_sphereRadius) (-_sphereRadius) _sphereZMin))
+        (P (V3 _sphereRadius _sphereRadius _sphereZMax))
 
   normalBounds _ = allDirections
 
@@ -121,15 +140,12 @@ instance (IEEE a, Epsilon a) => Shape (Sphere a) a where
   surfaceArea Sphere{..} = _spherePhiMax * _sphereRadius * (_sphereZMax - _sphereZMin)
 
   sampleSurface u s@Sphere{..} = do
-    -- Note: cos θ is inversely proportional to θ in the range [0, pi], and
-    -- cos θ = z when converting from cartesian to polar.
-    -- Therefore, cosθMin = zMax and cosθMax = zMin (here, cosθMin denotes
-    -- cos θ_min, NOT min (cos θ) - i.e. cosθMin will be greater than cosθMax).
-    let d = uniformPartialSphereDistribution _sphereZMax _sphereZMin _spherePhiMax
+    guard $ detTransform _sphereToRender /= 0
+    d <- sphereDistribution s
     let P (V2 cosθ ϕ) = realToFrac <$> sampleContinuous2_XY d (realToFrac <$> u)
     let sinθ = sqrt $ 1 - cosθ * cosθ
     let p = P $ _sphereRadius *^ sphericalDirection (SphericalCoordinates sinθ cosθ ϕ)
-    let _ssPoint = I.vErr 5 p
+    let _ssPoint = (I.singleton <$> _sphereToRender) !!*!! I.vErr 5 p
     -- Compute surface normals at p
     let n
           | xor' _sphereIsConcave _sphereTransformSwapsHandedness = negate $ _sphereToRender !!*!! N (unP p)
@@ -295,6 +311,85 @@ sphere _sphereToRender _sphereFromRender _sphereIsConcave (abs -> radius) zMin z
     _sphereZMin = clamp (-radius, radius) $ min zMin zMax
     _sphereZMax = clamp (-radius, radius) $ max zMin zMax
 
+instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) where
+  arbitrary = do
+    toRender <- arbitrary
+    isConcave <- arbitrary
+    radius <- abs <$> arbitrary
+    zMin <- choose (-radius, predIEEE radius)
+    zMax <- choose (succIEEE zMin, radius)
+    ϕMax <- choose (0, 2 * pi)
+    pure $ sphere toRender (invTransform toRender) isConcave radius zMin zMax ϕMax
+  shrink Sphere{..} =
+    [ sphere
+      toRender'
+      (invTransform toRender')
+      _sphereIsConcave
+      _sphereRadius
+      _sphereZMin
+      _sphereZMax
+      _spherePhiMax
+    | toRender' <- shrink _sphereToRender
+    ]
+      ++ [ sphere
+          _sphereToRender
+          (invTransform _sphereToRender)
+          _sphereIsConcave'
+          _sphereRadius
+          _sphereZMin
+          _sphereZMax
+          _spherePhiMax
+         | _sphereIsConcave' <- shrink _sphereIsConcave
+         ]
+      ++ [ sphere
+          _sphereToRender
+          (invTransform _sphereToRender)
+          _sphereIsConcave
+          _sphereRadius'
+          _sphereZMin
+          _sphereZMax
+          _spherePhiMax
+         | _sphereRadius' <- shrinkTowards 1 _sphereRadius
+         ]
+      ++ [ sphere
+          _sphereToRender
+          (invTransform _sphereToRender)
+          _sphereIsConcave
+          _sphereRadius
+          _sphereZMin'
+          _sphereZMax
+          _spherePhiMax
+         | _sphereZMin' <- shrinkTowards (-_sphereRadius) _sphereZMin
+         ]
+      ++ [ sphere
+          _sphereToRender
+          (invTransform _sphereToRender)
+          _sphereIsConcave
+          _sphereRadius
+          _sphereZMin
+          _sphereZMax'
+          _spherePhiMax
+         | _sphereZMax' <- shrinkTowards _sphereRadius _sphereZMax
+         ]
+      ++ [ sphere
+          _sphereToRender
+          (invTransform _sphereToRender)
+          _sphereIsConcave
+          _sphereRadius
+          _sphereZMin
+          _sphereZMax
+          _spherePhiMax'
+         | _spherePhiMax' <- shrinkTowards (2 * pi) _spherePhiMax
+         ]
+
+shrinkTowards :: (Fractional a, Epsilon a, Eq a) => a -> a -> [a]
+shrinkTowards target a
+  | δ == 0 = []
+  | nearZero δ = [target]
+  | otherwise = [a + (δ * 0.5)]
+  where
+    δ = target - a
+
 sphereRadius :: (Floating a, Ord a) => Lens' (Sphere a) a
 sphereRadius = lens _sphereRadius \Sphere{..} radius ->
   let zMin = clamp (-radius, radius) _sphereZMin
@@ -401,7 +496,7 @@ intersectRayQuadric Ray{..} tMax Sphere{..} = do
     a = I.square dx + I.square dy + I.square dz
     b = I.mulPow2 2 $ dx * ox + dy * oy + dz * oz
     ri = I.singleton _sphereRadius
-    c = I.square dx + I.square dy + I.square dz - I.square ri
+    c = I.square ox + I.square oy + I.square oz - I.square ri
     v = o - b / (a + a) *^ d
     len = norm v
     discriminant = mulPow2 4 $ a * (ri + len) * (ri - len)
@@ -470,3 +565,13 @@ xor' False False = False
 xor' False True = True
 xor' True False = True
 xor' True True = False
+
+sphereDistribution :: (RealFrac a) => Sphere a -> Maybe UniformSphereDistribution
+sphereDistribution Sphere{..} = do
+  -- Note: cos θ is inversely proportional to θ in the range [0, pi], and
+  -- cos θ = z when converting from cartesian to polar.
+  -- Therefore, cosθMin = zMax / radius  and cosθMax = zMin /radius (here, cosθMin denotes
+  -- cos θ_min, NOT min (cos θ) - i.e. cosθMin will be greater than cosθMax).
+  let cosθMax = _sphereZMin / _sphereRadius
+  let cosθMin = _sphereZMax / _sphereRadius
+  uniformPartialSphereDistributionE cosθMin cosθMax _spherePhiMax

@@ -368,35 +368,76 @@ enclosed b
   | otherwise = product $ diagonal b
 {-# INLINE enclosed #-}
 
-intersectRay :: (IsRay r, Ord a, Fractional a) => r a -> a -> Bounds3 a -> Maybe (Bounds1 a)
+{-# SPECIALIZE rayIntersects' ::
+  Point V3 Float -> V3 Float -> Float -> V3 Float -> Bounds3 Float -> Bool
+  #-}
+{-# SPECIALIZE rayIntersects' ::
+  Point V3 Double -> V3 Double -> Double -> V3 Double -> Bounds3 Double -> Bool
+  #-}
+rayIntersects'
+  :: (Ord a, Fractional a)
+  => Point V3 a
+  -> V3 a
+  -> a
+  -> V3 a
+  -> Bounds3 a
+  -> Bool
+rayIntersects'
+  (P (V3 ox oy oz))
+  (V3 invDx invDy invDz)
+  tRayMax
+  (V3 sgnDx sgnDy sgnDz)
+  (Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) = do
+    let txMin = resolveBound sgnDx x0 x1 ox invDx
+    let txMax = resolveBound sgnDx x1 x0 ox invDx
+    let tyMin = resolveBound sgnDy y0 y1 oy invDy
+    let tyMax = resolveBound sgnDy y1 y0 oy invDy
+    let tzMin = resolveBound sgnDz z0 z1 oz invDz
+    let tzMax = resolveBound sgnDz z1 z0 oz invDz
+    let tMin = max txMin $ max tyMin tzMin
+    let tMax = min txMax $ min tyMax tzMax
+    tMin <= tMax && tMin < tRayMax && tMax > 0
+    where
+      resolveBound sgn p0 p1 o' invD = ((sgn * p0 + (1 - sgn) * p1) - o') * invD
+      {-# INLINE resolveBound #-}
+{-# INLINE rayIntersects' #-}
+
+intersectRay :: (IsRay r, RealFloat a) => r a -> a -> Bounds3 a -> Maybe (Bounds1 a)
 intersectRay
   (view ray -> Ray (P (V3 ox oy oz)) (V3 dx dy dz) _)
-  tMax
-  (Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) =
-    foldSlab slabZ $ foldSlab slabY $ foldSlab slabX slab0
+  tRayMax
+  (Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) = do
+    let (txMin, txMax) = resolveBounds dx x0 x1 ox
+    let (tyMin, tyMax) = resolveBounds dy y0 y1 oy
+    let (tzMin, tzMax) = resolveBounds dz z0 z1 oz
+    let tMin = max txMin $ max tyMin tzMin
+    let tMax = min txMax $ min tyMax tzMax
+    if tMin <= tMax && tMin < tRayMax && tMax > 0
+      then Just $ Bounds (P (V1 tMin)) (P (V1 tMax))
+      else Nothing
     where
-      slab0 = Just $ Bounds (P (V1 0)) (P (V1 tMax))
-      slabX = computeSlab ox dx x0 x1
-      slabY = computeSlab oy dy y0 y1
-      slabZ = computeSlab oz dz z0 z1
-      computeSlab o d p0 p1
-        | d < 0 = Bounds (P (V1 $ (p1 - o) * dInv)) (P (V1 $ (p0 - o) * dInv))
-        | otherwise = Bounds (P (V1 $ (p0 - o) * dInv)) (P (V1 $ (p1 - o) * dInv))
+      resolveBounds d o p0 p1
+        | isNegativeZero d || d < 0 = ((p1 - o) * invD, (p0 - o) * invD)
+        | otherwise = ((p0 - o) * invD, (p1 - o) * invD)
         where
-          dInv = 1 / d
-      {-# INLINE computeSlab #-}
-      foldSlab _ Nothing = Nothing
-      foldSlab
-        (Bounds (P (V1 tNear)) (P (V1 tFar)))
-        (Just (Bounds (P (V1 t0)) (P (V1 t1))))
-          | t0' > t1' = Nothing
-          | otherwise = Just $ Bounds (P (V1 t0')) (P (V1 t1'))
-          where
-            t0'
-              | tNear > t0 = tNear
-              | otherwise = t0
-            t1'
-              | tFar < t1 = tNear
-              | otherwise = t0
-      {-# INLINE foldSlab #-}
+          invD = recip d
+      {-# INLINE resolveBounds #-}
 {-# INLINE intersectRay #-}
+
+rayIntersects :: (IsRay r, RealFloat a) => r a -> a -> Bounds3 a -> Bool
+rayIntersects (view ray -> Ray o (V3 (normalizeZero -> dx) (normalizeZero -> dy) (normalizeZero -> dz)) _) tMax =
+  rayIntersects'
+    o
+    (V3 (recip dx) (recip dy) (recip dz))
+    tMax
+    ( V3
+        (if isNegativeZero dx || dx < 0 then 0 else 1)
+        (if isNegativeZero dx || dy < 0 then 0 else 1)
+        (if isNegativeZero dz || dz < 0 then 0 else 1)
+    )
+
+normalizeZero :: (RealFloat a) => a -> a
+normalizeZero x
+  | isNegativeZero x = 0
+  | otherwise = x
+{-# INLINE rayIntersects #-}

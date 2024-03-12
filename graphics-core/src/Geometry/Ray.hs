@@ -113,9 +113,10 @@ class RayOrigin f where
 offsetRayOrigin' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> V3 a -> Point V3 a
 offsetRayOrigin' p (N n) ω = roundAway <$> P offset <*> p
   where
+    δ = dot (abs n) (I.margin <$> unP p)
     offset
-      | dot ω n < 0 = negate $ dot (abs n) (I.midpoint <$> unP p) *^ n
-      | otherwise = dot (abs n) (I.midpoint <$> unP p) *^ n
+      | dot ω n < 0 = negate $ δ *^ n
+      | otherwise = δ *^ n
     roundAway offset_i ((+ offset_i) . I.midpoint -> p_i) =
       case compare offset_i 0 of
         GT -> succIEEE p_i
