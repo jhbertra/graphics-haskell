@@ -8,7 +8,8 @@ import qualified Geometry.Bounds as Bounds
 import Geometry.Normal (Normal (..))
 import Geometry.Ray (IsRay (..), Ray (..))
 import Linear (
-  Epsilon,
+  Additive (lerp),
+  Epsilon (..),
   M44,
   Metric (quadrance),
   Quaternion,
@@ -138,7 +139,7 @@ transposeTransform (UnsafeTransform m mInv) =
 isIdentity :: (Eq a, Num a) => Transform a -> Bool
 isIdentity = (== identity) . _transformM
 
-instance (Arbitrary a, Floating a, Epsilon a) => Arbitrary (Transform a) where
+instance (Arbitrary a, Floating a, Epsilon a, Eq a) => Arbitrary (Transform a) where
   arbitrary = sized \case
     0 -> oneof leaves
     n -> oneof $ resize (n `div` 2) ((!!*!!) <$> arbitrary <*> arbitrary) : leaves
@@ -148,6 +149,10 @@ instance (Arbitrary a, Floating a, Epsilon a) => Arbitrary (Transform a) where
         , scale <$> arbitrary
         , rotate <$> arbitrary <*> arbitrary
         ]
+  shrink (UnsafeTransform m _)
+    | m == identity = []
+    | nearZero (m - identity) = [UnsafeTransform identity identity]
+    | otherwise = [transform $ lerp 0.5 identity m]
 
 translate :: (Num a) => V3 a -> Transform a
 translate (V3 x y z) =
