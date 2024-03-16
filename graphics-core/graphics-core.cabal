@@ -131,6 +131,7 @@ test-suite graphics-core-test
     , graphics-core
     , hspec
     , ieee
+    , lens
     , linear
     , QuickCheck
     , quickcheck-classes

@@ -12,6 +12,7 @@ import Linear
 import Linear.Affine
 import Linear.V
 import System.Random (Random)
+import Test.QuickCheck
 
 newtype Normal f a = N {unN :: f a}
   deriving stock (Show, Read, Eq, Ord, Generic, Traversable, Generic1)
@@ -40,6 +41,9 @@ newtype Normal f a = N {unN :: f a}
     , Epsilon
     , Random
     )
+
+instance (Arbitrary (f a), Floating a, Metric f, Epsilon a, Epsilon (f a)) => Arbitrary (Normal f a) where
+  arbitrary = N . normalize <$> arbitrary `suchThat` (not . nearZero)
 
 instance (Field1 (f a) (f a) a a) => Field1 (Normal f a) (Normal f a) a a where
   _1 = coerced @_ @_ @(f a) @(f a) . _1

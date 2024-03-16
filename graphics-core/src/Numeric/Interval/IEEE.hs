@@ -23,9 +23,20 @@ module Numeric.Interval.IEEE (
 import Linear
 import Linear.Affine (Point)
 import Numeric.IEEE (IEEE (..))
+import System.Random (Random)
+import Test.QuickCheck (Arbitrary (..), choose, sized)
 
 data Interval a = I !a !a
   deriving (Show, Eq, Ord)
+
+instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Interval a) where
+  arbitrary = sized \case
+    0 -> singleton <$> arbitrary
+    size -> fromMidpointAndMargin <$> arbitrary <*> choose (0, gamma $ floor $ log @Double $ fromIntegral size)
+  shrink i@(I a b)
+    | nearZero $ a - b = singleton <$> shrink a
+    | otherwise =
+        pure $ fromMidpointAndMargin (midpoint i) (margin i / 4)
 
 {-# SPECIALIZE gamma :: Integer -> Float #-}
 {-# SPECIALIZE gamma :: Integer -> Double #-}

@@ -313,7 +313,7 @@ sphere _sphereToRender _sphereFromRender _sphereIsConcave (abs -> radius) zMin z
 
 instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) where
   arbitrary = do
-    toRender <- arbitrary
+    toRender <- arbitrary `suchThat` (not . nearZero . detTransform)
     isConcave <- arbitrary
     radius <- abs <$> arbitrary
     zMin <- choose (-radius, predIEEE radius)
@@ -471,9 +471,7 @@ intersectRayQuadric Ray{..} tMax Sphere{..} = do
         | otherwise = (t0, t1)
       validateHit t = do
         guard (I.sup t <= tMax && I.inf t > 0)
-        let o' = P $ I.midpoint <$> o
-            d' = I.midpoint <$> d
-            pHit' = o' .+^ I.midpoint t *^ d'
+        let pHit' = I.midpoint <$> P (o .+^ t *^ d)
             P (V3 xHit yHit zHit) = pHit' ^* (_sphereRadius / norm pHit')
             xHit'
               | xHit == 0 && yHit == 0 = 1e-5 * _sphereRadius

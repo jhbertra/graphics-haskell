@@ -1,11 +1,12 @@
 module Geometry.ShapeSpec where
 
+import Control.Lens ((^.))
 import Control.Monad (guard)
 import Data.Kind (Type)
 import Data.Proxy (Proxy)
 import Geometry.Bounds (normalizeZero)
 import qualified Geometry.Bounds as Bounds
-import Geometry.Ray (Ray (..))
+import Geometry.Ray (Ray (..), RayOrigin (spawnRayTo))
 import Geometry.Shape
 import Geometry.Shape.Sphere (
   Sphere (_sphereRadius, _sphereToRender),
@@ -46,7 +47,14 @@ shapeLaws p =
     , ("intersects => bounds intersect", shapeIntersectsBounds p)
     , ("genIntersecting intersects", genIntersectingIntersects p)
     , ("sample intersects", shapeIntersectSample p)
+    , ("sample parametric coordinates are in [0, 1]^2", sampleCoordinates p)
+    , ("sample surfaceNormal is unit length", sampleUnitNormal p)
     , ("sample PDF", shapeSamplePdf p)
+    , ("sample in bounds", shapeSampleInBounds p)
+    , ("sampleFrom intersects", sampleFromIntersects p)
+    , ("sampleFrom parametric coordinates are in [0, 1]^2", sampleFromCoordinates p)
+    , ("sampleFrom surfaceNormal is unit length", sampleFromUnitNormal p)
+    , ("sampleFrom PDF", shapeSampleFromPdf p)
     ]
 
 shapeBoundIntersects
@@ -96,6 +104,28 @@ genIntersectingIntersects
 genIntersectingIntersects _ = property \s -> forAllIntersecting @s @a s \ray ->
   rayIntersects ray infinity s
 
+forAllSamples
+  :: forall s a prop
+   . (ArbitraryShape s a, Testable prop, Fractional a, Show a)
+  => s
+  -> (SurfaceSample a -> prop)
+  -> Property
+forAllSamples s f = property \(UniformVariable u) (UniformVariable v) ->
+  case sampleSurface (P (V2 (realToFrac u) (realToFrac v))) s of
+    Nothing -> discard
+    Just ss -> counterexample (show ss) $ f ss
+
+forAllSamplesFrom
+  :: forall s a prop
+   . (ArbitraryShape s a, Testable prop, Show a, IEEE a, Random a, Epsilon a)
+  => s
+  -> (ReferencePoint a -> SurfaceSample a -> prop)
+  -> Property
+forAllSamplesFrom s f = property \rp (UniformVariable u) (UniformVariable v) ->
+  case sampleSurfaceFrom rp (P (V2 (realToFrac u) (realToFrac v))) s of
+    Nothing -> discard
+    Just ss -> counterexample (show ss) $ f rp ss
+
 shapeIntersectSample
   :: forall s a
    . ( Show s
@@ -106,43 +136,155 @@ shapeIntersectSample
      )
   => Proxy s
   -> Property
-shapeIntersectSample _ = property \s (UniformVariable u) (UniformVariable v) ->
-  case sampleSurface @s @a (P (V2 (realToFrac u) (realToFrac v))) s of
-    Nothing -> discard
-    Just SurfaceSample{..} ->
-      forAllIntersecting @s @a s \(Ray o _ _) -> do
-        let d = (I.midpoint <$> _ssPoint) .-. o
-            ω = normalize d
-            ray = Ray o ω 0
-            err = abs $ norm d - norm (ω ^* norm d)
-            sampleS = show SurfaceSample{..}
-            rayS = show ray
-            dS = show d
-         in if nearZero err
-              then
-                counterexample sampleS $
-                  counterexample rayS $
-                    counterexample dS $
-                      rayIntersects ray infinity s
-              else discard
+shapeIntersectSample _ = property \s ->
+  forAllSamples @s @a s \SurfaceSample{..} ->
+    forAllIntersecting s \(Ray o _ _) -> do
+      let d = (I.midpoint <$> _ssPoint) .-. o
+          ω = normalize d
+          ray = Ray o ω 0
+          err = abs $ norm d - norm (ω ^* norm d)
+          rayS = show ray
+          dS = show d
+       in if nearZero err
+            then
+              counterexample rayS $
+                counterexample dS $
+                  rayIntersects ray infinity s
+            else discard
+
+sampleCoordinates
+  :: forall s a
+   . ( Show s
+     , ArbitraryShape s a
+     , IEEE a
+     , Epsilon a
+     , Show a
+     )
+  => Proxy s
+  -> Property
+sampleCoordinates _ = property \s ->
+  forAllSamples @s @a s \SurfaceSample{..} ->
+    _ssParametricCoords ^. _x >= 0
+      && _ssParametricCoords ^. _x <= 1
+      && _ssParametricCoords ^. _y >= 0
+      && _ssParametricCoords ^. _y <= 1
+
+sampleUnitNormal
+  :: forall s a
+   . ( Show s
+     , ArbitraryShape s a
+     , IEEE a
+     , Epsilon a
+     , Show a
+     )
+  => Proxy s
+  -> Property
+sampleUnitNormal _ = property \s ->
+  forAllSamples @s @a s \SurfaceSample{..} -> nearZero $ norm _ssNormal - 1
 
 shapeSamplePdf
   :: forall s a
-   . ( Shape s a
-     , Show s
-     , Arbitrary s
-     , Random a
+   . ( Show s
      , Show a
      , IEEE a
+     , ArbitraryShape s a
+     )
+  => Proxy s
+  -> Property
+shapeSamplePdf _ = property \s ->
+  forAllSamples @s @a s \SurfaceSample{..} -> _ssPdf > 0
+
+shapeSampleInBounds
+  :: forall s a
+   . ( Show s
+     , Show a
+     , IEEE a
+     , ArbitraryShape s a
+     )
+  => Proxy s
+  -> Property
+shapeSampleInBounds _ = property \s ->
+  forAllSamples @s @a s \SurfaceSample{..} ->
+    counterexample (show $ bounds s) $
+      (I.midpoint <$> _ssPoint) `Bounds.inside` bounds s
+
+sampleFromIntersects
+  :: forall s a
+   . ( Show s
+     , ArbitraryShape s a
+     , Show a
+     , IEEE a
+     , Random a
      , Epsilon a
      )
   => Proxy s
   -> Property
-shapeSamplePdf _ = property \s -> do
-  forAll (choose (0, 1)) \u ->
-    case sampleSurface @s @a u s of
-      Nothing -> discard
-      Just ss@SurfaceSample{..} -> surfacePdf ss s == _ssPdf
+sampleFromIntersects _ = property \s ->
+  forAllSamplesFrom @s @a s \rp SurfaceSample{..} ->
+    let ray = spawnRayTo (I.midpoint <$> _ssPoint) rp
+        rayS = show ray
+     in counterexample rayS $
+          rayIntersects ray infinity s
+
+sampleFromCoordinates
+  :: forall s a
+   . ( Show s
+     , ArbitraryShape s a
+     , IEEE a
+     , Epsilon a
+     , Show a
+     , Random a
+     )
+  => Proxy s
+  -> Property
+sampleFromCoordinates _ = property \s ->
+  forAllSamplesFrom @s @a s \_ SurfaceSample{..} ->
+    _ssParametricCoords ^. _x >= 0
+      && _ssParametricCoords ^. _x <= 1
+      && _ssParametricCoords ^. _y >= 0
+      && _ssParametricCoords ^. _y <= 1
+
+sampleFromUnitNormal
+  :: forall s a
+   . ( Show s
+     , ArbitraryShape s a
+     , IEEE a
+     , Epsilon a
+     , Show a
+     , Random a
+     )
+  => Proxy s
+  -> Property
+sampleFromUnitNormal _ = property \s ->
+  forAllSamplesFrom @s @a s \_ SurfaceSample{..} -> nearZero $ norm _ssNormal - 1
+
+shapeSampleFromPdf
+  :: forall s a
+   . ( Show s
+     , Show a
+     , IEEE a
+     , ArbitraryShape s a
+     , Random a
+     , Epsilon a
+     )
+  => Proxy s
+  -> Property
+shapeSampleFromPdf _ = property \s ->
+  forAllSamplesFrom @s @a s \_ SurfaceSample{..} -> _ssPdf > 0
+
+shapeSampleFromInBounds
+  :: forall s a
+   . ( Show s
+     , Show a
+     , IEEE a
+     , ArbitraryShape s a
+     , Random a
+     , Epsilon a
+     )
+  => Proxy s
+  -> Property
+shapeSampleFromInBounds _ = property \s ->
+  forAllSamplesFrom @s @a s \_ SurfaceSample{..} -> (I.midpoint <$> _ssPoint) `Bounds.inside` bounds s
 
 class (Show (IntersectingParams s a), Shape s a, Arbitrary a, Arbitrary s) => ArbitraryShape s a where
   data IntersectingParams s a :: Type

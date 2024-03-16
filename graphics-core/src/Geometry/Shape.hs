@@ -21,10 +21,14 @@ import Geometry.Ray (
   spawnRayTo',
  )
 import Geometry.Spherical (DirectionCone)
-import Linear (V2, V3)
+import Linear (Epsilon, V2, V3)
 import Linear.Affine (Affine ((.-.)), Point)
+import Numeric.IEEE (IEEE)
 import Numeric.Interval.IEEE (Interval)
 import qualified Numeric.Interval.IEEE as I
+import System.Random (Random)
+import Test.QuickCheck (Arbitrary, genericShrink)
+import Test.QuickCheck.Arbitrary (Arbitrary (..))
 
 class Shape s a | s -> a where
   bounds :: s -> Bounds3 a
@@ -73,6 +77,14 @@ data ReferencePoint a = ReferencePoint
   , _rpTime :: a
   }
   deriving (Ord, Eq, Generic, Show)
+
+instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (ReferencePoint a) where
+  arbitrary =
+    ReferencePoint
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+  shrink = genericShrink
 
 instance RayOrigin ReferencePoint where
   offsetRayOrigin ω ReferencePoint{..} = case _rpNormals of
