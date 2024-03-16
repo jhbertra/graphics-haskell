@@ -64,6 +64,7 @@ library
     Geometry.Parametric
     Geometry.Ray
     Geometry.Shape
+    Geometry.Shape.Cylinder
     Geometry.Shape.Sphere
     Geometry.Spherical
     Geometry.Transform

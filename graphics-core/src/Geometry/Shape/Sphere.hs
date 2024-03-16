@@ -3,7 +3,7 @@ module Geometry.Shape.Sphere (
   Sphere,
   _sphereFromRender,
   _sphereTransformSwapsHandedness,
-  _sphereIsConcave,
+  _sphereFlipNormals,
   _spherePhiMax,
   _sphereRadius,
   _sphereThetaMax,
@@ -12,7 +12,7 @@ module Geometry.Shape.Sphere (
   _sphereZMax,
   _sphereZMin,
   sphere,
-  sphereIsConcave,
+  sphereFlipNormals,
   spherePhiMax,
   sphereRadius,
   sphereThetaMax,
@@ -68,7 +68,7 @@ data Sphere a = Sphere
   , _sphereThetaMin :: a
   , _sphereThetaMax :: a
   , _spherePhiMax :: a
-  , _sphereIsConcave :: Bool
+  , _sphereFlipNormals :: Bool
   , _sphereFromRender :: Transform a
   , _sphereToRender :: Transform a
   , _sphereTransformSwapsHandedness :: Bool
@@ -80,13 +80,13 @@ instance (Eq a) => Eq (Sphere a) where
       && on (==) _sphereZMin a b
       && on (==) _sphereZMax a b
       && on (==) _spherePhiMax a b
-      && on (==) _sphereIsConcave a b
+      && on (==) _sphereFlipNormals a b
   a /= b =
     on (/=) _sphereRadius a b
       || on (/=) _sphereZMin a b
       || on (/=) _sphereZMax a b
       || on (/=) _spherePhiMax a b
-      || on (/=) _sphereIsConcave a b
+      || on (/=) _sphereFlipNormals a b
 
 instance (Ord a) => Ord (Sphere a) where
   compare a b =
@@ -94,7 +94,7 @@ instance (Ord a) => Ord (Sphere a) where
       <> on compare _sphereZMin a b
       <> on compare _sphereZMax a b
       <> on compare _spherePhiMax a b
-      <> on compare _sphereIsConcave a b
+      <> on compare _sphereFlipNormals a b
 
 instance (Show a) => Show (Sphere a) where
   showsPrec p Sphere{..} =
@@ -106,7 +106,7 @@ instance (Show a) => Show (Sphere a) where
           . showSpace
           . showsPrec 11 _sphereFromRender
           . showSpace
-          . showsPrec 11 _sphereIsConcave
+          . showsPrec 11 _sphereFlipNormals
           . showSpace
           . showsPrec 11 _sphereRadius
           . showSpace
@@ -148,7 +148,7 @@ instance (IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
     let _ssPoint = (I.singleton <$> _sphereToRender) !!*!! I.vErr 5 p
     -- Compute surface normals at p
     let n
-          | xor' _sphereIsConcave _sphereTransformSwapsHandedness = negate $ _sphereToRender !!*!! N (unP p)
+          | xor' _sphereFlipNormals _sphereTransformSwapsHandedness = negate $ _sphereToRender !!*!! N (unP p)
           | otherwise = _sphereToRender !!*!! N (unP p)
     -- Compute u, v coordinates at p
     let _ssParametricCoords = toParametric cosθ ϕ s
@@ -211,7 +211,7 @@ instance (IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
         let n = normalize $ N $ fromLocal (-ω) $ frameFromZ $ normalize ωc
         let p = pCenter + _sphereRadius *^ coerce n
         let _ssNormal
-              | _sphereIsConcave = -n
+              | _sphereFlipNormals = -n
               | otherwise = n
         let _ssPoint = I.vErr 5 p
         let ϕSphere = case atan2 (p ^. _y) (p ^. _x) of
@@ -294,7 +294,7 @@ sphere
   -> a
   -> a
   -> Sphere a
-sphere _sphereToRender _sphereFromRender _sphereIsConcave (abs -> radius) zMin zMax phiMax =
+sphere _sphereToRender _sphereFromRender _sphereFlipNormals (abs -> radius) zMin zMax phiMax =
   Sphere
     { _sphereRadius = radius
     , _sphereZMin
@@ -302,7 +302,7 @@ sphere _sphereToRender _sphereFromRender _sphereIsConcave (abs -> radius) zMin z
     , _sphereThetaMin = acos $ _sphereZMin / radius
     , _sphereThetaMax = acos $ _sphereZMax / radius
     , _spherePhiMax = clamp (0, 2 * pi) phiMax
-    , _sphereIsConcave
+    , _sphereFlipNormals
     , _sphereFromRender
     , _sphereToRender
     , _sphereTransformSwapsHandedness = swapsHandedness _sphereToRender
@@ -324,7 +324,7 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) wher
     [ sphere
       toRender'
       (invTransform toRender')
-      _sphereIsConcave
+      _sphereFlipNormals
       _sphereRadius
       _sphereZMin
       _sphereZMax
@@ -334,17 +334,17 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) wher
       ++ [ sphere
           _sphereToRender
           (invTransform _sphereToRender)
-          _sphereIsConcave'
+          _sphereFlipNormals'
           _sphereRadius
           _sphereZMin
           _sphereZMax
           _spherePhiMax
-         | _sphereIsConcave' <- shrink _sphereIsConcave
+         | _sphereFlipNormals' <- shrink _sphereFlipNormals
          ]
       ++ [ sphere
           _sphereToRender
           (invTransform _sphereToRender)
-          _sphereIsConcave
+          _sphereFlipNormals
           _sphereRadius'
           _sphereZMin
           _sphereZMax
@@ -354,7 +354,7 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) wher
       ++ [ sphere
           _sphereToRender
           (invTransform _sphereToRender)
-          _sphereIsConcave
+          _sphereFlipNormals
           _sphereRadius
           _sphereZMin'
           _sphereZMax
@@ -364,7 +364,7 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) wher
       ++ [ sphere
           _sphereToRender
           (invTransform _sphereToRender)
-          _sphereIsConcave
+          _sphereFlipNormals
           _sphereRadius
           _sphereZMin
           _sphereZMax'
@@ -374,7 +374,7 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Sphere a) wher
       ++ [ sphere
           _sphereToRender
           (invTransform _sphereToRender)
-          _sphereIsConcave
+          _sphereFlipNormals
           _sphereRadius
           _sphereZMin
           _sphereZMax
@@ -447,8 +447,8 @@ spherePhiMax :: (Floating a, Ord a) => Lens' (Sphere a) a
 spherePhiMax = lens _spherePhiMax \s phiMax ->
   s{_spherePhiMax = clamp (0, 2 * pi) phiMax}
 
-sphereIsConcave :: Lens' (Sphere a) Bool
-sphereIsConcave = lens _sphereIsConcave \s _sphereIsConcave -> s{_sphereIsConcave}
+sphereFlipNormals :: Lens' (Sphere a) Bool
+sphereFlipNormals = lens _sphereFlipNormals \s _sphereFlipNormals -> s{_sphereFlipNormals}
 
 data QuadricIntersection a = QuadricIntersection
   { _qiTHit :: a
@@ -511,7 +511,7 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
       dpdv
       dndu
       dndv
-      (_sphereTransformSwapsHandedness `xor'` _sphereIsConcave)
+      (_sphereTransformSwapsHandedness `xor'` _sphereFlipNormals)
   where
     P (V3 xHit yHit zHit) = _qiPObj
     siP = I.vErr 5 _qiPObj
