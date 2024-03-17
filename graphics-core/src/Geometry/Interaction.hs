@@ -115,8 +115,8 @@ surfaceLocalGeometry
 surfaceLocalGeometry _dpdu _dpdv _dndu _dndv flipNormal = SurfaceLocalGeometry{..}
   where
     _surfaceNormal
-      | flipNormal = N $ normalize $ on cross unN _dndv _dndu
-      | otherwise = N $ normalize $ on cross unN _dndu _dndv
+      | flipNormal = N $ normalize $ cross _dpdv _dpdu
+      | otherwise = N $ normalize $ cross _dpdu _dpdv
 
 data ScreenSpaceDifferentials a = ScreenSpaceDifferentials
   { _dpdx :: V3 a

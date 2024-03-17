@@ -100,9 +100,9 @@ library
     , vector
 
 executable spectrum-viewer
-  import:             base
-  hs-source-dirs:     spectrum-viewer
-  main-is:            Main.hs
+  import:         base
+  hs-source-dirs: spectrum-viewer
+  main-is:        Main.hs
   build-depends:
     , base
     , graphics-core
@@ -111,8 +111,21 @@ executable spectrum-viewer
     , linear
     , poly
 
-  build-tool-depends: hspec-discover:hspec-discover
-  ghc-options:        -threaded -fspecialise-aggressively
+  ghc-options:    -threaded -fspecialise-aggressively
+
+executable shape-visualizer
+  import:         base
+  hs-source-dirs: shape-visualizer
+  main-is:        Main.hs
+  build-depends:
+    , base
+    , graphics-core
+    , hashable
+    , JuicyPixels
+    , linear
+    , poly
+
+  ghc-options:    -threaded -fspecialise-aggressively
 
 test-suite graphics-core-test
   import:             base

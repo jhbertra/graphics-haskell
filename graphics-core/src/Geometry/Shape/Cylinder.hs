@@ -1,4 +1,4 @@
-module Graphics.Shape.Cylinder (
+module Geometry.Shape.Cylinder (
   Cylinder,
   _cylinderFromRender,
   _cylinderTransformSwapsHandedness,
@@ -194,11 +194,12 @@ instance (IEEE a, Epsilon a, Bounded a) => Shape (Cylinder a) a where
     pure $ RayIntersection (interactionFromQuadric r isect s) _qiTHit
 
   sampleSurface (P (V2 ξ0 ξ1)) c@Cylinder{..} = do
+    guard $ detTransform _cylinderToRender /= 0
     let z = ξ0 * _cylinderHeight
     let ϕ = ξ1 * _cylinderPhiMax
     let x' = _cylinderRadius * cos ϕ
     let y' = _cylinderRadius * sin ϕ
-    let radius' = sqrt $ (x' * x') + (y' + y')
+    let radius' = sqrt $ (x' * x') + (y' * y')
     let correction = _cylinderRadius / radius'
     let x = x' * correction
     let y = y' * correction
