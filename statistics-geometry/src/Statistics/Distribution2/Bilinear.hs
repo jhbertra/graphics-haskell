@@ -139,6 +139,10 @@ instance ContDistr2 BilinearDistribution where
     where
       x' = (x - ax) / (bx - ax)
 
+deriving newtype instance Show (Marginal2_X BilinearDistribution)
+deriving newtype instance Show (Marginal2_Y BilinearDistribution)
+deriving newtype instance Show (Conditional2_X BilinearDistribution)
+deriving newtype instance Show (Conditional2_Y BilinearDistribution)
 deriving newtype instance Distribution (Marginal2_X BilinearDistribution)
 deriving newtype instance Distribution (Marginal2_Y BilinearDistribution)
 deriving newtype instance Distribution (Conditional2_X BilinearDistribution)
@@ -167,6 +171,18 @@ deriving newtype instance ContGen (Marginal2_X BilinearDistribution)
 deriving newtype instance ContGen (Marginal2_Y BilinearDistribution)
 deriving newtype instance ContGen (Conditional2_X BilinearDistribution)
 deriving newtype instance ContGen (Conditional2_Y BilinearDistribution)
+
+instance Arbitrary (Marginal2_X BilinearDistribution) where
+  arbitrary = BilinearMarginalX <$> arbitrary
+
+instance Arbitrary (Marginal2_Y BilinearDistribution) where
+  arbitrary = BilinearMarginalY <$> arbitrary
+
+instance Arbitrary (Conditional2_X BilinearDistribution) where
+  arbitrary = BilinearConditionalX <$> arbitrary
+
+instance Arbitrary (Conditional2_Y BilinearDistribution) where
+  arbitrary = BilinearConditionalY <$> arbitrary
 
 bilinearA :: BilinearDistribution -> Point V2 Double
 bilinearA BilinearDistribution{..} = P $ V2 bilinearAx bilinearAy
