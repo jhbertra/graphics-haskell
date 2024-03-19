@@ -2,21 +2,23 @@ module Main where
 
 import Codec.Picture (PixelRGB8 (PixelRGB8), writePng)
 import Codec.Picture.Types (generateImage)
+import Control.Monad (replicateM)
 import Data.List (find)
 import Data.Maybe (catMaybes)
 import Data.Ord (clamp)
 import Data.Word (Word8)
+import GHC.IO (unsafePerformIO)
 import Geometry.Interaction
 import Geometry.Normal
 import Geometry.Ray
 import Geometry.Shape
-import Geometry.Shape.Cylinder (cylinder)
-import Geometry.Shape.Sphere (sphere)
+import Geometry.Shape.Disk (disk)
 import Geometry.Transform
 import Graphics.Color (RGB (..))
 import Linear
 import Linear.Affine (Point (..))
 import qualified Numeric.Interval.IEEE as I
+import System.Random (randomRIO)
 
 main :: IO ()
 main = writePng "output.png" $ generateImage (render shape) res res
@@ -24,14 +26,14 @@ main = writePng "output.png" $ generateImage (render shape) res res
     t = rotateX $ -pi / 2.5
     -- t = transform identity
     shape =
-      sphere
+      disk
         t
         (invTransform t)
         False
-        1
-        (-1)
-        1
-        (2 * pi)
+        2
+        0.5
+        0
+        pi
 
 res :: Int
 res = 300
@@ -47,13 +49,14 @@ render shape = \i j ->
       sampleColorDepth = do
         SurfaceSample{..} <- find (nearSample x y) samples
         let sz = case _ssPoint of P (V3 _ _ z') -> I.sup z' + 1e-2
-        pure (RGB $ V3 _ssPdf 0 0, sz)
+        pure (RGB $ V3 _ssPdf 0 _ssPdf, sz)
       colorDepth = do
         RayIntersection SurfaceInteraction{..} _ <- intersectRay r (1 / 0) shape
         let SurfaceLocalGeometry{..} = _siLocalGeometry
         pure
           ( lerp (max 0 $ dot (-lightDir) $ faceForward (-rd) _surfaceNormal) 1 0.01
-          , case _siPoint of P (V3 _ _ iz) -> I.inf iz
+          , -- ( RGB $ unN _surfaceNormal
+            case _siPoint of P (V3 _ _ iz) -> I.inf iz
           )
    in rgbToColor case sampleColorDepth of
         Nothing -> maybe 0 fst colorDepth
@@ -64,20 +67,19 @@ render shape = \i j ->
             | otherwise -> sampleColor
   where
     zoom = 2
-    rp =
-      ReferencePoint
-        { _rpPoint = P $ V3 1 0 $ I.singleton 0
-        , _rpNormals = Nothing
-        , _rpTime = 0
-        }
+    -- rp =
+    --   ReferencePoint
+    --     { _rpPoint = P $ V3 1 0 $ I.singleton 0
+    --     , _rpNormals = Nothing
+    --     , _rpTime = 0
+    --     }
     nearSample x y SurfaceSample{..} = case I.midpoint <$> _ssPoint of
       P (V3 x' y' _) ->
         abs (x - x') <= 2 / fromIntegral res
           && abs (y - y') <= 2 / fromIntegral res
     samples = catMaybes do
-      u <- [0 .. 29]
-      v <- [0 .. 29]
-      pure $ sampleSurfaceFrom rp (P $ V2 (u / 30) (v / 30)) shape
+      (u, v) <- unsafePerformIO $ replicateM 300 $ randomRIO ((0, 0), (0.999999, 0.999999))
+      pure $ sampleSurface (P $ V2 u v) shape
 
 lightDir :: Normal V3 Float
 lightDir = normalize $ N $ V3 1 (-1) (-0.5)

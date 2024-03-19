@@ -65,6 +65,7 @@ library
     Geometry.Ray
     Geometry.Shape
     Geometry.Shape.Cylinder
+    Geometry.Shape.Disk
     Geometry.Shape.Sphere
     Geometry.Spherical
     Geometry.Transform
@@ -124,6 +125,7 @@ executable shape-visualizer
     , JuicyPixels
     , linear
     , poly
+    , random
 
   ghc-options:    -threaded -fspecialise-aggressively
 

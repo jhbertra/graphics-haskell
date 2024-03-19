@@ -3,7 +3,6 @@
 module Geometry.Interaction where
 
 import Control.Lens (Lens', Traversal', coerced, makeLenses, over, set, traversed, (%~), (&), (^.))
-import Data.Function (on)
 import Geometry.Normal (Normal (..), faceForward)
 import Geometry.Ray (
   RayOrigin (..),
@@ -52,21 +51,16 @@ instance (IEEE a, Epsilon a) => ApplyTransform SurfaceInteraction a where
       ti = I.singleton <$> t
 
 surfaceInteraction
-  :: (Floating a, Epsilon a)
+  :: (Epsilon a)
   => Point V3 (Interval a)
   -> a
   -> Maybe (V3 a)
   -> Point V2 a
-  -> V3 a
-  -> V3 a
-  -> Normal V3 a
-  -> Normal V3 a
-  -> Bool
+  -> SurfaceLocalGeometry a
   -> SurfaceInteraction a
-surfaceInteraction _siPoint _siTime _siOutgoingDirection _siParametricCoords dpdu dpdv dndu dndv flipNormal =
+surfaceInteraction _siPoint _siTime _siOutgoingDirection _siParametricCoords _siLocalGeometry =
   SurfaceInteraction{..}
   where
-    _siLocalGeometry = surfaceLocalGeometry dpdu dpdv dndu dndv flipNormal
     _siShadingGeometry = _siLocalGeometry
     _siFaceIndex = 0
     _siScreenSpaceDifferentials = ScreenSpaceDifferentials 0 0 0 0 0 0

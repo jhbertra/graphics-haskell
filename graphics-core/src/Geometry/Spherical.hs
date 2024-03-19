@@ -25,6 +25,13 @@ data SphericalTriangle a = UnsafeSphericalTriangle (V3 a) (V3 a) (V3 a)
 sphericalTriangle :: (Floating a, Epsilon a) => V3 a -> V3 a -> V3 a -> SphericalTriangle a
 sphericalTriangle a b c = UnsafeSphericalTriangle (normalize a) (normalize b) (normalize c)
 
+atan2' :: (RealFloat a) => a -> a -> a
+atan2' y x
+  | ϕ < 0 = ϕ + 2 * pi
+  | otherwise = ϕ
+  where
+    ϕ = atan2 y x
+
 sphericalTriangleArea :: (RealFloat a) => SphericalTriangle a -> a
 sphericalTriangleArea (UnsafeSphericalTriangle a b c) =
   abs $

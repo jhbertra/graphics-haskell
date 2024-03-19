@@ -22,12 +22,12 @@ import Data.Maybe (fromMaybe)
 import Data.Ord (clamp)
 import GHC.Show (showSpace)
 import qualified Geometry.Bounds as Bounds
-import Geometry.Interaction (SurfaceInteraction, surfaceInteraction)
+import Geometry.Interaction (SurfaceInteraction, surfaceInteraction, surfaceLocalGeometry)
 import Geometry.Normal (Normal (..))
 import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
 import Geometry.Shape
 import Geometry.Shape.Sphere (QuadricIntersection (..), shrinkTowards)
-import Geometry.Spherical (allDirections)
+import Geometry.Spherical (allDirections, atan2')
 import Geometry.Transform
 import Linear
 import Linear.Affine
@@ -285,10 +285,7 @@ intersectRayQuadric Ray{..} tMax Cylinder{..} = do
             xHit = xHit' * correction
             yHit = yHit' * correction
             pHit = P $ V3 xHit yHit zHit
-            phi' = atan2 yHit xHit
-            phi
-              | phi' < 0 = phi' + 2 * pi
-              | otherwise = phi'
+            phi = atan2' yHit xHit
         guard $
           zHit >= min 0 _cylinderHeight
             && zHit <= max 0 _cylinderHeight
@@ -315,13 +312,15 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Cylinder{..} =
     !!*!! surfaceInteraction
       siP
       _time
-      (Just $ _cylinderFromRender !!*!! _d)
+      (Just $ _cylinderFromRender !!*!! (-_d))
       (P $ V2 u v)
-      dpdu
-      dpdv
-      dndu
-      dndv
-      (_cylinderTransformSwapsHandedness `xor'` _cylinderFlipNormals)
+      ( surfaceLocalGeometry
+          dpdu
+          dpdv
+          dndu
+          dndv
+          (_cylinderTransformSwapsHandedness `xor'` _cylinderFlipNormals)
+      )
   where
     P (V3 xHit yHit zHit) = _qiPObj
     siP = I.fromMidpointAndMargin <$> _qiPObj <*> (I.gamma 3 *^ abs (P $ V3 xHit yHit 0))

@@ -33,7 +33,7 @@ import Test.QuickCheck.Arbitrary (Arbitrary (..))
 class Shape s a | s -> a where
   bounds :: s -> Bounds3 a
 
-  normalBounds :: s -> DirectionCone V3 a
+  normalBounds :: s -> DirectionCone (Normal V3) a
 
   intersectRay :: (IsRay r) => r a -> a -> s -> Maybe (RayIntersection a)
 

@@ -32,11 +32,11 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Ord (clamp)
 import GHC.Show (showSpace)
 import qualified Geometry.Bounds as Bounds
-import Geometry.Interaction (SurfaceInteraction (..), surfaceInteraction)
+import Geometry.Interaction (SurfaceInteraction (..), surfaceInteraction, surfaceLocalGeometry)
 import Geometry.Normal (Normal (..))
 import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
 import Geometry.Shape (RayIntersection (..), ReferencePoint (..), Shape (..), SurfaceSample (..))
-import Geometry.Spherical (SphericalCoordinates (..), allDirections, safeAcos, safeSqrt, sphericalDirection)
+import Geometry.Spherical (SphericalCoordinates (..), allDirections, atan2', safeAcos, safeSqrt, sphericalDirection)
 import Geometry.Transform (
   ApplyTransform (..),
   Transform,
@@ -214,10 +214,7 @@ instance (IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
               | _sphereFlipNormals = -n
               | otherwise = n
         let _ssPoint = I.vErr 5 p
-        let ϕSphere = case atan2 (p ^. _y) (p ^. _x) of
-              phi
-                | phi < 0 -> phi + 2 * pi
-                | otherwise -> phi
+        let ϕSphere = atan2' (p ^. _y) (p ^. _x)
         let _ssParametricCoords = toParametric (p ^. _z / _sphereRadius) ϕSphere s
         guard $
           _ssParametricCoords ^. _x <= 0
@@ -477,10 +474,7 @@ intersectRayQuadric Ray{..} tMax Sphere{..} = do
               | xHit == 0 && yHit == 0 = 1e-5 * _sphereRadius
               | otherwise = xHit
             pHit = P $ V3 xHit' yHit zHit
-            phi' = atan2 yHit xHit'
-            phi
-              | phi' < 0 = phi' + 2 * pi
-              | otherwise = phi'
+            phi = atan2' yHit xHit'
         guard $
           (_sphereZMin <= -_sphereRadius || zHit >= _sphereZMin)
             && (_sphereZMax >= _sphereRadius || zHit <= _sphereZMax)
@@ -505,13 +499,15 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
     !!*!! surfaceInteraction
       siP
       _time
-      (Just $ _sphereFromRender !!*!! _d)
+      (Just $ _sphereFromRender !!*!! (-_d))
       (P $ V2 u v)
-      dpdu
-      dpdv
-      dndu
-      dndv
-      (_sphereTransformSwapsHandedness `xor'` _sphereFlipNormals)
+      ( surfaceLocalGeometry
+          dpdu
+          dpdv
+          dndu
+          dndv
+          (_sphereTransformSwapsHandedness `xor'` _sphereFlipNormals)
+      )
   where
     P (V3 xHit yHit zHit) = _qiPObj
     siP = I.vErr 5 _qiPObj
