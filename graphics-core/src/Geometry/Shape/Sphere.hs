@@ -48,6 +48,7 @@ import Geometry.Transform (
  )
 import Linear
 import Linear.Affine
+import Numeric.FMA
 import Numeric.IEEE (IEEE (..))
 import Numeric.Interval.IEEE (mulPow2)
 import qualified Numeric.Interval.IEEE as I
@@ -122,7 +123,7 @@ instance (Floating a, Read a, Ord a) => Read (Sphere a) where
     Ident "sphere" <- lexP
     sphere <$> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec <*> readPrec
 
-instance (IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
+instance (FMA a, IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
   bounds Sphere{..} =
     _sphereToRender
       !!*!! Bounds.Bounds
@@ -493,7 +494,8 @@ intersectRayQuadric Ray{..} tMax Sphere{..} = do
     len = norm v
     discriminant = mulPow2 4 $ a * (ri + len) * (ri - len)
 
-interactionFromQuadric :: (Epsilon a, IEEE a) => Ray a -> QuadricIntersection a -> Sphere a -> SurfaceInteraction a
+interactionFromQuadric
+  :: (Epsilon a, IEEE a, FMA a) => Ray a -> QuadricIntersection a -> Sphere a -> SurfaceInteraction a
 interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
   _sphereToRender
     !!*!! surfaceInteraction
@@ -541,7 +543,7 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Sphere{..} =
     e = dot n d²pdu²
     f = dot n d²pdvdv
     g = dot n d²pdv²
-    _EGF2 = _E * _G - _F * _F
+    _EGF2 = differenceOfProducts _E _G _F _F
     invEGF2
       | _EGF2 == 0 = 0
       | otherwise = recip _EGF2

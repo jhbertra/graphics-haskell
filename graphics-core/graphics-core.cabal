@@ -58,6 +58,7 @@ common base
 library
   import:          base
   exposed-modules:
+    Geometry.Barycentric
     Geometry.Bounds
     Geometry.Interaction
     Geometry.Normal
@@ -67,12 +68,14 @@ library
     Geometry.Shape.Cylinder
     Geometry.Shape.Disk
     Geometry.Shape.Sphere
+    Geometry.Shape.Triangle
     Geometry.Spherical
     Geometry.Transform
     Graphics.Color
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
+    Numeric.FMA
     Numeric.Interval.IEEE
     Physics.Spectrum
 

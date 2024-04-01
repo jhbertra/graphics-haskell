@@ -7,6 +7,9 @@ import Data.Foldable1 (Foldable1)
 import Data.Functor.Apply (Apply)
 import Data.Functor.Classes (Eq1, Ord1)
 import Data.Ix (Ix)
+import qualified Data.Vector.Generic as G
+import qualified Data.Vector.Generic.Mutable as M
+import qualified Data.Vector.Unboxed as U
 import GHC.Generics (Generic, Generic1)
 import Linear
 import Linear.Affine
@@ -41,6 +44,38 @@ newtype Normal f a = N {unN :: f a}
     , Epsilon
     , Random
     )
+
+newtype instance U.Vector (Normal f a) = V_N (U.Vector (f a))
+newtype instance U.MVector s (Normal f a) = MV_N (U.MVector s (f a))
+instance (U.Unbox (f a)) => U.Unbox (Normal f a)
+
+instance (U.Unbox (f a)) => M.MVector U.MVector (Normal f a) where
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicOverlaps #-}
+  {-# INLINE basicUnsafeNew #-}
+  {-# INLINE basicUnsafeRead #-}
+  {-# INLINE basicUnsafeWrite #-}
+  basicLength (MV_N v) = M.basicLength v
+  basicUnsafeSlice m n (MV_N v) = MV_N (M.basicUnsafeSlice m n v)
+  basicOverlaps (MV_N v) (MV_N u) = M.basicOverlaps v u
+  basicUnsafeNew n = MV_N <$> M.basicUnsafeNew n
+  basicUnsafeRead (MV_N v) i = N <$> M.basicUnsafeRead v i
+  basicUnsafeWrite (MV_N v) i (N x) = M.basicUnsafeWrite v i x
+  basicInitialize (MV_N v) = M.basicInitialize v
+  {-# INLINE basicInitialize #-}
+
+instance (U.Unbox (f a)) => G.Vector U.Vector (Normal f a) where
+  {-# INLINE basicUnsafeFreeze #-}
+  {-# INLINE basicUnsafeThaw #-}
+  {-# INLINE basicLength #-}
+  {-# INLINE basicUnsafeSlice #-}
+  {-# INLINE basicUnsafeIndexM #-}
+  basicUnsafeFreeze (MV_N v) = V_N <$> G.basicUnsafeFreeze v
+  basicUnsafeThaw (V_N v) = MV_N <$> G.basicUnsafeThaw v
+  basicLength (V_N v) = G.basicLength v
+  basicUnsafeSlice m n (V_N v) = V_N (G.basicUnsafeSlice m n v)
+  basicUnsafeIndexM (V_N v) i = N <$> G.basicUnsafeIndexM v i
 
 instance (Arbitrary (f a), Floating a, Metric f, Epsilon a, Epsilon (f a)) => Arbitrary (Normal f a) where
   arbitrary = N . normalize <$> arbitrary `suchThat` (not . nearZero)

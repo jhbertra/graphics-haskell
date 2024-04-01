@@ -31,6 +31,7 @@ import Geometry.Spherical (allDirections, atan2')
 import Geometry.Transform
 import Linear
 import Linear.Affine
+import Numeric.FMA
 import Numeric.IEEE
 import qualified Numeric.Interval.IEEE as I
 import System.Random (Random)
@@ -178,7 +179,7 @@ instance (Arbitrary a, IEEE a, Random a, Epsilon a) => Arbitrary (Cylinder a) wh
          | _cylinderPhiMax' <- shrinkTowards (2 * pi) _cylinderPhiMax
          ]
 
-instance (IEEE a, Epsilon a, Bounded a) => Shape (Cylinder a) a where
+instance (FMA a, IEEE a, Epsilon a, Bounded a) => Shape (Cylinder a) a where
   bounds Cylinder{..} =
     _cylinderToRender
       !!*!! Bounds.Bounds
@@ -306,7 +307,8 @@ intersectRayQuadric Ray{..} tMax Cylinder{..} = do
     len = sqrt $ I.square vx + I.square vy
     discriminant = I.mulPow2 4 $ a * (ri + len) * (ri - len)
 
-interactionFromQuadric :: (Epsilon a, IEEE a) => Ray a -> QuadricIntersection a -> Cylinder a -> SurfaceInteraction a
+interactionFromQuadric
+  :: (Epsilon a, IEEE a, FMA a) => Ray a -> QuadricIntersection a -> Cylinder a -> SurfaceInteraction a
 interactionFromQuadric Ray{..} QuadricIntersection{..} Cylinder{..} =
   _cylinderToRender
     !!*!! surfaceInteraction
@@ -338,7 +340,7 @@ interactionFromQuadric Ray{..} QuadricIntersection{..} Cylinder{..} =
     e = dot n d²pdu²
     f = dot n d²pdvdv
     g = dot n d²pdv²
-    _EGF2 = _E * _G - _F * _F
+    _EGF2 = differenceOfProducts _E _G _F _F
     invEGF2
       | _EGF2 == 0 = 0
       | otherwise = recip _EGF2
