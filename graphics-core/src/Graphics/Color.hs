@@ -21,8 +21,18 @@ import Linear.Affine (Affine, Point (..))
 import Linear.V (Finite (..))
 import Numeric.AD.Internal.Reverse (Tape)
 import Numeric.AD.Mode.Reverse (Reverse, auto, jacobian')
+import Numeric.FMA (FMA)
 import Numeric.Natural (Natural)
 import Physics.Spectrum
+import Physics.Spectrum.Class
+import Physics.Spectrum.Interpolated (InterpolatedSpectrum)
+import Physics.Spectrum.Mul (MulSpectrum (..))
+import Physics.Spectrum.RGB
+import Physics.Spectrum.Sampled (
+  HasSpectrumSamples (SampledSpectrum, meanSample, safeDiv),
+  SampledWavelengths,
+  sampledWavelengthsPdf,
+ )
 import System.Random (Random)
 
 newtype XYZ a = XYZ {unXYZ :: V3 a}
@@ -88,27 +98,28 @@ xyYToXYZ (P (V2 x y)) y'
 xyToXYZ :: (Fractional a, Eq a) => Point V2 a -> XYZ a
 xyToXYZ xy = xyYToXYZ xy 1
 
-{-# SPECIALIZE spectrumToXYZ :: Spectrum Float -> XYZ Float #-}
-{-# SPECIALIZE spectrumToXYZ :: Spectrum Double -> XYZ Double #-}
-spectrumToXYZ :: (RealFloat a, Bounded a) => Spectrum a -> XYZ a
+spectrumToXYZ :: (RealFloat a, Spectrum s a) => s -> XYZ a
 spectrumToXYZ s =
-  (integrateVisible . mulSpectrum s <$> XYZ (V3 cieX cieY cieZ)) ^/ cieYIntegral
+  (integrateVisible . MulSpectrum s <$> XYZ (V3 cieX cieY cieZ)) ^/ cieYIntegral
 
-{-# SPECIALIZE sampleXYZ :: [WavelengthSample Float] -> Spectrum Float -> XYZ Float #-}
-{-# SPECIALIZE sampleXYZ :: [WavelengthSample Double] -> Spectrum Double -> XYZ Double #-}
-sampleXYZ :: (RealFloat a, Bounded a) => [WavelengthSample a] -> Spectrum a -> XYZ a
-sampleXYZ λs s =
-  (sampleSpectrum . mulSpectrum s <$> XYZ (V3 cieX cieY cieZ)) ^/ cieYIntegral
+sampledSpectrumToXYZ
+  :: (RealFloat a, HasSpectrumSamples n a, Num (SampledSpectrum n a))
+  => SampledWavelengths n a
+  -> SampledSpectrum n a
+  -> XYZ a
+sampledSpectrumToXYZ λs s =
+  XYZ
+    ( V3
+        (meanSample $ safeDiv (x * s) pdf)
+        (meanSample $ safeDiv (y * s) pdf)
+        (meanSample $ safeDiv (z * s) pdf)
+    )
+    ^/ cieYIntegral
   where
-    safeDiv 0 _ = 0
-    safeDiv a b = a / b
-    average = uncurry safeDiv . foldr (\a (acc, n) -> (a + acc, n + 1)) (0, 0)
-    sampleSpectrum s' = average do
-      WavelengthSample{..} <- λs
-      pure
-        if wsPdf == 0
-          then 0
-          else evalSpectrum wsλ s' / wsPdf
+    pdf = sampledWavelengthsPdf λs
+    x = sampleSpectrum λs cieX
+    y = sampleSpectrum λs cieY
+    z = sampleSpectrum λs cieZ
 
 newtype RGB a = RGB {unRGB :: V3 a}
   deriving stock (Show, Read, Eq, Ord, Generic, Traversable, Generic1)
@@ -175,7 +186,7 @@ class (RealFloat a) => RGBColorSpace c a where
   mRgbFromXYZ :: c -> RGB (XYZ a)
   mRgbToXYZ :: c -> XYZ (RGB a)
   rgbPrimaries :: c -> RGB (Point V2 a)
-  whitePoint :: c -> Spectrum a
+  whitePoint :: c -> InterpolatedSpectrum a
   whitePointChroma :: c -> Point V2 a
 
 colorSpaceLuminanceVector :: forall c a. (RGBColorSpace c a) => c -> RGB a
@@ -193,39 +204,35 @@ rgbToXYZ c = (mRgbToXYZ c !*)
 rgbFromXYZ :: (RGBColorSpace c a) => c -> XYZ a -> RGB a
 rgbFromXYZ c = (mRgbFromXYZ c !*)
 
-spectrumToRGB :: (Bounded a, RGBColorSpace c a) => c -> Spectrum a -> RGB a
+spectrumToRGB :: (RGBColorSpace c a, Spectrum s a) => c -> s -> RGB a
 spectrumToRGB c = rgbFromXYZ c . spectrumToXYZ
 
-sampleRGB
-  :: (RGBColorSpace c a, Bounded a)
+sampledSpectrumToRGB
+  :: (RGBColorSpace c a, HasSpectrumSamples n a, Num (SampledSpectrum n a))
   => c
-  -> [WavelengthSample a]
-  -> Spectrum a
+  -> SampledWavelengths n a
+  -> SampledSpectrum n a
   -> RGB a
-sampleRGB c = fmap (rgbFromXYZ c) . sampleXYZ
+sampledSpectrumToRGB c = fmap (rgbFromXYZ c) . sampledSpectrumToXYZ
 
-rgbAlbedo :: forall c a. (RGBColorSpace c a, Bounded a) => c -> RGB a -> Spectrum a
-rgbAlbedo _ (RGB (V3 0 0 0)) = constSpectrum 0
+rgbAlbedo :: forall c a. (RGBColorSpace c a, FMA a) => c -> RGB a -> RGBSpectrum a
 rgbAlbedo c rgb@(RGB (V3 r g b))
-  | r == g && g == b = constSpectrum r
-  | maxChannel > 1 = mulSpectrum (constSpectrum maxChannel) $ albedoSpectrum $ rgb ^/ maxChannel
+  | r == g && g == b = rgbAlbedoSpectrum 0 0 $ (r - 0.5) / sqrt (r * (r - 1))
   | otherwise = albedoSpectrum rgb
   where
     roundtrip :: forall s. (Reifies s Tape) => RGB a -> V3 (Reverse s a) -> RGB (Reverse s a)
     roundtrip rgb' (V3 c0' c1' c2') =
-      (auto <$> rgb') - spectrumToRGB c (mulSpectrum (whitePoint c) $ SigmoidQuadraticSpectrum c0' c1' c2')
+      (auto <$> rgb') - spectrumToRGB c (MulSpectrum (whitePoint c) $ rgbAlbedoSpectrum c0' c1' c2')
 
     albedoSpectrum rgb' =
       let V3 c0 c1 c2 = gaussNewton (roundtrip rgb') 1.0e-6 (V3 0 0 0) 50
-       in SigmoidQuadraticSpectrum c0 c1 c2
+       in rgbAlbedoSpectrum c0 c1 c2
 
-    maxChannel = maximum rgb
-
-rgbLight :: forall c a. (RGBColorSpace c a, Bounded a) => c -> RGB a -> Spectrum a
+rgbLight :: forall c a. (RGBColorSpace c a, FMA a) => c -> RGB a -> RGBSpectrum a
 rgbLight c = rgbIlluminant c $ whitePoint c
 
-rgbIlluminant :: forall c a. (RGBColorSpace c a, Bounded a) => c -> Spectrum a -> RGB a -> Spectrum a
-rgbIlluminant c illuminant = mulSpectrum illuminant . rgbAlbedo c
+rgbIlluminant :: forall c a. (RGBColorSpace c a, FMA a) => c -> InterpolatedSpectrum a -> RGB a -> RGBSpectrum a
+rgbIlluminant c illuminant rgb = (rgbAlbedo c rgb){_rgbIlluminant = Just illuminant}
 
 gaussNewton
   :: ( Metric f
@@ -272,9 +279,9 @@ gaussNewton r tol = go
 type ColorSpaceData a = (RGB (XYZ a), XYZ (RGB a), Point V2 a)
 
 mkColorSpace
-  :: (RealFloat a, Bounded a)
+  :: (RealFloat a)
   => RGB (Point V2 a)
-  -> Spectrum a
+  -> InterpolatedSpectrum a
   -> ColorSpaceData a
 mkColorSpace primaries wp =
   (coerce $ inv33 m, coerce m, xyFromXYZ wpXYZ)
@@ -297,7 +304,7 @@ instance (Reifies s Tape, RGBColorSpace c a) => RGBColorSpace c (Reverse s a) wh
   mRgbFromXYZ = (fmap . fmap) auto . mRgbFromXYZ
   mRgbToXYZ = (fmap . fmap) auto . mRgbToXYZ
   rgbPrimaries = (fmap . fmap) auto . rgbPrimaries
-  whitePoint = realToFracSpectrum @a . whitePoint
+  whitePoint = fmap (realToFrac @a) . whitePoint
   whitePointChroma = fmap auto . whitePointChroma
 
 instance RGBColorSpace SRGB Float where
@@ -351,7 +358,7 @@ sRGBPrimaries =
 {-# SPECIALIZE sRGBData :: ColorSpaceData Float #-}
 {-# SPECIALIZE sRGBData :: ColorSpaceData Double #-}
 sRGBData
-  :: (RealFloat a, Bounded a, Enum a)
+  :: (RealFloat a, Enum a)
   => ColorSpaceData a
 sRGBData = mkColorSpace sRGBPrimaries cieD65
 
@@ -362,7 +369,7 @@ dci_P3Primaries =
 {-# SPECIALIZE dci_P3Data :: ColorSpaceData Float #-}
 {-# SPECIALIZE dci_P3Data :: ColorSpaceData Double #-}
 dci_P3Data
-  :: (RealFloat a, Bounded a, Enum a)
+  :: (RealFloat a, Enum a)
   => ColorSpaceData a
 dci_P3Data = mkColorSpace dci_P3Primaries cieD65
 
@@ -373,7 +380,7 @@ rec2020Primaries =
 {-# SPECIALIZE rec2020Data :: ColorSpaceData Float #-}
 {-# SPECIALIZE rec2020Data :: ColorSpaceData Double #-}
 rec2020Data
-  :: (RealFloat a, Bounded a, Enum a)
+  :: (RealFloat a, Enum a)
   => ColorSpaceData a
 rec2020Data = mkColorSpace rec2020Primaries cieD65
 
@@ -384,6 +391,6 @@ aces2065_1Primaries =
 {-# SPECIALIZE aces2065_1Data :: ColorSpaceData Float #-}
 {-# SPECIALIZE aces2065_1Data :: ColorSpaceData Double #-}
 aces2065_1Data
-  :: (RealFloat a, Bounded a, Enum a)
+  :: (RealFloat a, Enum a)
   => ColorSpaceData a
 aces2065_1Data = mkColorSpace aces2065_1Primaries acesD60

@@ -3,10 +3,12 @@
 module Numeric.FMA where
 
 import Data.Coerce (coerce)
+import Data.Reflection (Reifies)
 import Foreign.C
 import Geometry.Normal
 import Linear
 import Linear.Affine
+import Numeric.AD.Internal.Reverse
 
 class (Num a) => FMA a where
   fma :: a -> a -> a -> a
@@ -54,6 +56,9 @@ instance FMA Double where
   {-# SPECIALIZE instance FMA Double #-}
   fma = coerce c_fma
   {-# INLINE fma #-}
+
+instance (FMA a, Reifies s Tape) => FMA (Reverse s a) where
+  fma a b c = a * b + c
 
 fms :: (FMA a) => a -> a -> a -> a
 fms a b c = fma a b (-c)

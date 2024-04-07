@@ -1,378 +1,33 @@
 module Physics.Spectrum where
 
-import Data.Bifunctor (Bifunctor (..))
-import Data.Coerce (coerce)
-import Data.Function (on)
-import Data.List (groupBy, sortOn)
-import Data.Maybe (fromMaybe)
 import qualified Data.Vector as V
-import Data.Word (Word16, Word8)
-import Geometry.Bounds (Bounds (Bounds), Bounds1)
-import qualified Geometry.Bounds as Bounds
-import Linear
-import Linear.Affine (Point (..))
-
-data Spectrum a where
-  ConstSpectrum :: a -> Spectrum a
-  SigmoidQuadraticSpectrum :: a -> a -> a -> Spectrum a
-  SampledSpectrum :: Word16 -> V.Vector a -> Spectrum a
-  InterpolatedSpectrum :: V.Vector ((a, a), (a, a)) -> Spectrum a
-  BlackbodySpectrum :: Blackbody a -> Spectrum a
-  AddSpectrum :: Spectrum a -> Spectrum a -> Spectrum a
-  MulSpectrum :: Spectrum a -> Spectrum a -> Spectrum a
-
-deriving instance (Eq a) => Eq (Spectrum a)
-deriving instance (Show a) => Show (Spectrum a)
-
-realToFracSpectrum :: (Real a, Fractional b) => Spectrum a -> Spectrum b
-realToFracSpectrum = \case
-  ConstSpectrum a -> ConstSpectrum $ realToFrac a
-  SigmoidQuadraticSpectrum a b c -> SigmoidQuadraticSpectrum (realToFrac a) (realToFrac b) (realToFrac c)
-  SampledSpectrum λMin samples -> SampledSpectrum λMin $ realToFrac <$> samples
-  InterpolatedSpectrum points -> InterpolatedSpectrum $ bimap (bimap realToFrac realToFrac) (bimap realToFrac realToFrac) <$> points
-  BlackbodySpectrum bb -> BlackbodySpectrum $ realToFrac <$> bb
-  AddSpectrum a b -> AddSpectrum (realToFracSpectrum a) (realToFracSpectrum b)
-  MulSpectrum a b -> MulSpectrum (realToFracSpectrum a) (realToFracSpectrum b)
-
-constSpectrum :: (Ord a, Num a) => a -> Spectrum a
-constSpectrum = ConstSpectrum . max 0
-{-# INLINE constSpectrum #-}
-
-sigmoid :: (RealFloat a) => a -> a
-sigmoid a
-  | isInfinite a = if a > 0 then 1 else 0
-  | otherwise = 0.5 + a / (2 * sqrt (1 + a * a))
-{-# INLINE sigmoid #-}
-
-denselySampleSpectrum :: (RealFloat a) => Word8 -> Spectrum a -> Spectrum a
-denselySampleSpectrum 0 _ = constSpectrum 0
-denselySampleSpectrum _ s@(SampledSpectrum _ _) = s
-denselySampleSpectrum subSamples s =
-  sampledSpectrum minVisibleλ $ V.generate (fromIntegral visibleRange) \i ->
-    let invNumSamples = 1 / fromIntegral subSamples
-        samples = V.generate (fromIntegral subSamples) \j ->
-          let t = fromIntegral j * invNumSamples
-           in evalSpectrum (fromIntegral (fromIntegral minVisibleλ + i) + t) s
-     in V.sum samples * invNumSamples
-
-sampledSpectrum :: (Ord a, Num a) => Word16 -> V.Vector a -> Spectrum a
-sampledSpectrum λmin samples
-  | λmin' > maxVisibleλ || V.null samples' = mempty
-  | otherwise = SampledSpectrum λmin' samples'
-  where
-    invisiblePrefix = max 0 $ fromIntegral minVisibleλ - fromIntegral λmin
-    visibleSamples = V.drop invisiblePrefix samples
-    firstNonZero = fromMaybe (V.length visibleSamples) $ V.findIndex (> 0) visibleSamples
-    samplesTrimmed = V.drop firstNonZero visibleSamples
-    λmin' = λmin + fromIntegral (firstNonZero + invisiblePrefix)
-    trimmedSpan = V.length samplesTrimmed
-    invisibleSuffix = max 0 $ fromIntegral λmin' + trimmedSpan - fromIntegral maxVisibleλ - 1
-    samples' = V.take (trimmedSpan - invisibleSuffix) samplesTrimmed
-{-# INLINE sampledSpectrum #-}
-
-interpolatedSpectrum :: (Ord a) => [(a, a)] -> Spectrum a
-interpolatedSpectrum =
-  InterpolatedSpectrum . V.fromList . intervals . fmap head . groupBy (on (==) fst) . sortOn fst
-{-# INLINE interpolatedSpectrum #-}
-
-intervals :: [a] -> [(a, a)]
-intervals [] = []
-intervals [_] = []
-intervals (a : b : as) = (a, b) : intervals (b : as)
+import Physics.Spectrum.Class
+import Physics.Spectrum.Histogram
+import Physics.Spectrum.Interpolated
+import Physics.Spectrum.Mul
 
 normalizedInterpolatedSpectrum
-  :: (RealFloat a, Bounded a)
+  :: (RealFloat a)
   => [(a, a)]
-  -> Spectrum a
+  -> InterpolatedSpectrum a
 normalizedInterpolatedSpectrum samples =
   scaleSpectrum (cieYIntegral / luminance) spec
   where
     spec = interpolatedSpectrum samples
-    luminance = integrateVisible $ mulSpectrum cieY spec
+    luminance = integrateVisible $ MulSpectrum cieY spec
 {-# INLINE normalizedInterpolatedSpectrum #-}
-
-blackbodySpectrum :: (Floating a, Ord a) => a -> Spectrum a
-blackbodySpectrum = BlackbodySpectrum . mkBlackbody
-{-# INLINE blackbodySpectrum #-}
-
-mkBlackbody :: (Floating a, Ord a) => a -> Blackbody a
-mkBlackbody bbTemperature = Blackbody{..}
-  where
-    λMax = 2.8977721e-3 / bbTemperature
-    bbNormalizationFactor = 1 / blackbody bbTemperature (λMax * 1e9)
-{-# INLINE mkBlackbody #-}
-
-blackbody :: (Ord a, Floating a) => a -> a -> a
-blackbody t
-  | t <= 0 = const 0
-  | otherwise = \λ -> do
-      let λ' = λ * 1e-9
-      (2 * 5.955206e-17) / ((λ' ** 5) * (exp (1.986443e-25 / (λ' * 1.3806488e-23 * t)) - 1))
-{-# INLINE blackbody #-}
-
-addSpectrum :: (Ord a, Num a) => Spectrum a -> Spectrum a -> Spectrum a
-addSpectrum (ConstSpectrum 0) a = a
-addSpectrum a (ConstSpectrum 0) = a
-addSpectrum (ConstSpectrum a) (ConstSpectrum b) = constSpectrum $ a + b
-addSpectrum a b = AddSpectrum a b
-{-# INLINE addSpectrum #-}
-
-scaleSpectrum :: (Ord a, Num a) => a -> Spectrum a -> Spectrum a
-scaleSpectrum a s
-  | a <= 0 = mempty
-  | a == 1 = s
-  | otherwise = case s of
-      ConstSpectrum b -> constSpectrum $ a * b
-      SampledSpectrum λ samples -> SampledSpectrum λ $ (a *) `V.map` samples
-      InterpolatedSpectrum points -> InterpolatedSpectrum $ scaleIntervals a points
-      AddSpectrum s0 s1 -> AddSpectrum (scaleSpectrum a s0) (scaleSpectrum a s1)
-      MulSpectrum (ConstSpectrum b) (ConstSpectrum c) -> ConstSpectrum $ a * b * c
-      MulSpectrum (ConstSpectrum b) (SampledSpectrum λ samples) ->
-        SampledSpectrum λ $ (a * b *) `V.map` samples
-      MulSpectrum (SampledSpectrum λ samples) (ConstSpectrum b) ->
-        SampledSpectrum λ $ (a * b *) `V.map` samples
-      MulSpectrum (ConstSpectrum b) (InterpolatedSpectrum points) ->
-        InterpolatedSpectrum $ scaleIntervals (a * b) points
-      MulSpectrum (InterpolatedSpectrum points) (ConstSpectrum b) ->
-        InterpolatedSpectrum $ scaleIntervals (a * b) points
-      MulSpectrum s' (SampledSpectrum λ samples) ->
-        MulSpectrum s' $ SampledSpectrum λ $ (a *) `V.map` samples
-      MulSpectrum (SampledSpectrum λ samples) s' ->
-        MulSpectrum (SampledSpectrum λ $ (a *) `V.map` samples) s'
-      MulSpectrum s' (InterpolatedSpectrum points) ->
-        MulSpectrum s' $ InterpolatedSpectrum $ scaleIntervals a points
-      MulSpectrum (InterpolatedSpectrum points) s' ->
-        MulSpectrum (InterpolatedSpectrum $ scaleIntervals a points) s'
-      MulSpectrum (ConstSpectrum b) s' -> MulSpectrum (ConstSpectrum $ a * b) s'
-      MulSpectrum s' (ConstSpectrum b) -> MulSpectrum s' (ConstSpectrum $ a * b)
-      _ -> MulSpectrum (ConstSpectrum a) s
-
-scaleIntervals :: (Num a) => a -> V.Vector ((a, a), (a, a)) -> V.Vector ((a, a), (a, a))
-scaleIntervals s = fmap (bimap (fmap (s *)) (fmap (s *)))
-
-mulSpectrum :: (Ord a, Num a) => Spectrum a -> Spectrum a -> Spectrum a
-mulSpectrum (ConstSpectrum 0) _ = mempty
-mulSpectrum _ (ConstSpectrum 0) = mempty
-mulSpectrum (ConstSpectrum 1) a = a
-mulSpectrum a (ConstSpectrum 1) = a
-mulSpectrum (ConstSpectrum a) (ConstSpectrum b) = constSpectrum $ a * b
-mulSpectrum a b = MulSpectrum a b
-{-# INLINE mulSpectrum #-}
-
-instance (Num a, Ord a) => Semigroup (Spectrum a) where
-  (<>) = addSpectrum
-  {-# INLINE (<>) #-}
-
-instance (Num a, Ord a) => Monoid (Spectrum a) where
-  mempty = ConstSpectrum 0
-  {-# INLINE mempty #-}
-
-data Blackbody a = Blackbody
-  { bbTemperature :: a
-  , bbNormalizationFactor :: a
-  }
-  deriving (Eq, Ord, Show, Functor)
-
--- {-# SPECIALIZE maxVisibleBounds :: Bounds1 Float #-}
--- {-# SPECIALIZE maxVisibleBounds :: Bounds1 Double #-}
-maxVisibleBounds :: (Num a) => Bounds1 a
-maxVisibleBounds = on Bounds (P . V1) (fromIntegral minVisibleλ) (fromIntegral maxVisibleλ)
-
-visibleRange :: Word16
-visibleRange = maxVisibleλ - minVisibleλ + 1
-
-maxVisibleλ :: Word16
-maxVisibleλ = 830
-
-minVisibleλ :: Word16
-minVisibleλ = 360
-
-{-# SPECIALIZE visibleBounds :: Spectrum Float -> Bounds1 Float #-}
-{-# SPECIALIZE visibleBounds :: Spectrum Double -> Bounds1 Double #-}
-visibleBounds :: (Bounded a, Ord a, Num a) => Spectrum a -> Bounds1 a
-visibleBounds = \case
-  ConstSpectrum a
-    | a == 0 -> mempty
-    | otherwise -> maxVisibleBounds
-  AddSpectrum a b -> visibleBounds a <> visibleBounds b
-  MulSpectrum a b -> visibleBounds a `Bounds.intersect` visibleBounds b
-  SampledSpectrum λmin samples ->
-    on
-      Bounds
-      (P . V1 . fromIntegral)
-      (max minVisibleλ λmin)
-      (min maxVisibleλ $ λmin + fromIntegral (V.length samples))
-  InterpolatedSpectrum points
-    | V.null points -> mempty
-    | otherwise ->
-        on Bounds (P . V1) (fst $ fst $ V.unsafeHead points) (fst $ fst $ V.unsafeLast points)
-  BlackbodySpectrum _ -> maxVisibleBounds
-  SigmoidQuadraticSpectrum{} -> maxVisibleBounds
-
-{-# SPECIALIZE evalSpectrum :: Float -> Spectrum Float -> Float #-}
-{-# SPECIALIZE evalSpectrum :: Double -> Spectrum Double -> Double #-}
-evalSpectrum :: forall a. (RealFloat a) => a -> Spectrum a -> a
-evalSpectrum λ
-  | λ >= fromIntegral minVisibleλ && λ <= fromIntegral maxVisibleλ = go
-  | otherwise = const 0
-  where
-    go = \case
-      ConstSpectrum a -> a
-      AddSpectrum a b -> on (+) go a b
-      MulSpectrum a b -> on (*) go a b
-      SigmoidQuadraticSpectrum a b c -> sigmoid $ a * (λ * λ) + b * λ + c
-      SampledSpectrum λMin samples -> case round λ - fromIntegral λMin of
-        offset
-          | offset < 0 || offset >= V.length samples -> 0
-          | otherwise -> samples V.! offset
-      InterpolatedSpectrum points -> interpolateInterval λ points
-      BlackbodySpectrum Blackbody{..}
-        | λ <= 0 -> 0
-        | otherwise -> blackbody bbTemperature λ * bbNormalizationFactor
-
-interpolateInterval :: (RealFrac a) => a -> V.Vector ((a, a), (a, a)) -> a
-interpolateInterval λ v
-  | V.null v = 0
-  | otherwise =
-      let (l, ((λ0, a0), (λ1, a1)), r) = unsafeBisect λ v
-       in case compare λ λ0 of
-            LT -> interpolateInterval λ l
-            EQ -> a0
-            GT -> case compare λ λ1 of
-              LT -> lerpScalar ((λ - λ0) / (λ1 - λ0)) a0 a1
-              EQ -> a1
-              GT -> interpolateInterval λ r
-
-unsafeBisect
-  :: (RealFrac a)
-  => a
-  -> V.Vector ((a, a), (a, a))
-  -> (V.Vector ((a, a), (a, a)), ((a, a), (a, a)), V.Vector ((a, a), (a, a)))
-unsafeBisect λ v = (l, V.unsafeHead r, V.unsafeTail r)
-  where
-    (l, r) = V.splitAt i v
-    i = min (V.length v - 1) $ floor $ (λ - λ0) / (λn - λ0)
-    λ0 = fst $ fst $ V.unsafeHead v
-    λn = fst $ snd $ V.unsafeLast v
 
 lerpScalar :: (Eq a, Num a) => a -> a -> a -> a
 lerpScalar 0 a _ = a
 lerpScalar 1 _ b = b
 lerpScalar t a b = (1 - t) * a + t * b
 
-upperBound :: (RealFloat a) => Spectrum a -> a
-upperBound = \case
-  ConstSpectrum a -> a
-  AddSpectrum a b -> upperBound a + upperBound b
-  MulSpectrum a b -> upperBound a * upperBound b
-  SigmoidQuadraticSpectrum a b c -> case compare a 0 of
-    LT ->
-      let v = -b / (2 * a)
-       in sigmoid $ a * v * v + b * v + c
-    EQ -> if b == 0 then sigmoid c else 1
-    GT -> 1
-  SampledSpectrum _ samples -> V.foldr max 0 samples
-  InterpolatedSpectrum points -> maximum $ uncurry max . bimap snd snd <$> points
-  BlackbodySpectrum _ -> 1
+mkXYZResponseCurve :: (Num a, Ord a) => [a] -> HistogramSpectrum a
+mkXYZResponseCurve = histogramSpectrum 360 . V.fromList
 
-integrate :: forall a. (RealFloat a) => Bounds1 a -> Spectrum a -> a
-integrate bounds@(Bounds (P (V1 a)) (P (V1 b))) s
-  | Bounds.null bounds = 0
-  | otherwise = case s of
-      ConstSpectrum i -> i * range
-      AddSpectrum s0 s1 -> integrate bounds s0 + integrate bounds s1
-      MulSpectrum (ConstSpectrum x) y -> x * integrate bounds y
-      MulSpectrum x (ConstSpectrum y) -> y * integrate bounds x
-      MulSpectrum (SampledSpectrum λMin samples) (SampledSpectrum λMin' samples') -> do
-        let go λMin0 samples0 λMin1 samples1 = do
-              let d = fromIntegral $ λMin1 - λMin0
-              integrate bounds $
-                SampledSpectrum λMin1 $
-                  V.zipWith (*) (V.drop d samples0) samples1
-        case compare λMin λMin' of
-          LT -> go λMin samples λMin' samples'
-          EQ -> integrate bounds $ SampledSpectrum λMin $ V.zipWith (*) samples samples'
-          GT -> go λMin' samples' λMin samples
-      MulSpectrum (SampledSpectrum λMin samples) y ->
-        integrate bounds $ SampledSpectrum λMin $ multiplySample (fromIntegral λMin) samples y
-      MulSpectrum x (SampledSpectrum λMin samples) ->
-        integrate bounds $ SampledSpectrum λMin $ multiplySample (fromIntegral λMin) samples x
-      SampledSpectrum λMin samples -> do
-        let a' = floor a
-        let range' = ceiling b - a'
-        let skip = max 0 $ a' - fromIntegral λMin
-        V.sum $ V.slice skip range' samples
-      _ -> foldr ((+) . flip evalSpectrum s . fromInteger) 0 [floor a .. ceiling b]
-  where
-    range = b - a
-
-    multiplySample :: Int -> V.Vector a -> Spectrum a -> V.Vector a
-    multiplySample λMin samples s' =
-      V.generate (V.length samples) \i ->
-        evalSpectrum (fromIntegral $ λMin + i) s' * (samples V.! i)
-{-# INLINE integrate #-}
-
-{-# SPECIALIZE integrateVisible :: Spectrum Float -> Float #-}
-{-# SPECIALIZE integrateVisible :: Spectrum Double -> Double #-}
-integrateVisible :: (RealFloat a, Bounded a) => Spectrum a -> a
-integrateVisible s = integrate (visibleBounds s) s
-{-# INLINE integrateVisible #-}
-
-data WavelengthSample a = WavelengthSample
-  { wsλ :: a
-  , wsPdf :: a
-  }
-  deriving (Show, Read, Eq, Ord)
-
-{-# SPECIALIZE sampleWavelengthsUniform :: Float -> Float -> Float -> Int -> [WavelengthSample Float] #-}
-{-# SPECIALIZE sampleWavelengthsUniform :: Double -> Double -> Double -> Int -> [WavelengthSample Double] #-}
-sampleWavelengthsUniform :: (Fractional a, Ord a) => a -> a -> a -> Int -> [WavelengthSample a]
-sampleWavelengthsUniform u λMin λMax nSamples = do
-  let range = λMax - λMin
-  let λInitial = u * range
-  let delta = range / fromIntegral nSamples
-  let wsPdf = 1 / range
-  i <- [0 .. nSamples]
-  let λi = λInitial + fromIntegral i * delta
-  pure
-    WavelengthSample
-      { wsλ = if λi > λMax then λMin + (λi - λMax) else λi
-      , wsPdf
-      }
-
-{-# SPECIALIZE sampleWavelengthsVisible :: Float -> Int -> [WavelengthSample Float] #-}
-{-# SPECIALIZE sampleWavelengthsVisible :: Double -> Int -> [WavelengthSample Double] #-}
-sampleWavelengthsVisible :: (RealFloat a) => a -> Int -> [WavelengthSample a]
-sampleWavelengthsVisible u nSamples = do
-  let nInv = recip $ fromIntegral nSamples
-  i <- [0 .. nSamples - 1]
-  let t = fromIntegral i * nInv
-  let (_ :: Integer, up) = properFraction $ u + t
-  let wsλ = sampleVisible up
-  pure $
-    WavelengthSample
-      { wsλ
-      , wsPdf = visibleWavelengthsPdf wsλ
-      }
-
-{-# SPECIALIZE sampleVisible :: Float -> Float #-}
-{-# SPECIALIZE sampleVisible :: Double -> Double #-}
-sampleVisible :: (Floating a) => a -> a
-sampleVisible u = 538 - 138.888889 * atanh (0.85691062 - 1.82750197 * u)
-
-{-# SPECIALIZE visibleWavelengthsPdf :: Float -> Float #-}
-{-# SPECIALIZE visibleWavelengthsPdf :: Double -> Double #-}
-visibleWavelengthsPdf :: (Ord a, Floating a) => a -> a
-visibleWavelengthsPdf λ
-  | λ < fromIntegral minVisibleλ || λ > fromIntegral maxVisibleλ = 0
-  | otherwise = 0.0039398042 / sqrt (cosh $ 0.0072 * (λ - 538))
-
-mkXYZResponseCurve :: (Num a, Ord a) => [a] -> Spectrum a
-mkXYZResponseCurve = sampledSpectrum minVisibleλ . V.fromList
-
-{-# SPECIALIZE cieX :: Spectrum Float #-}
-{-# SPECIALIZE cieX :: Spectrum Double #-}
-cieX :: (Fractional a, Ord a) => Spectrum a
+{-# SPECIALIZE cieX :: HistogramSpectrum Float #-}
+{-# SPECIALIZE cieX :: HistogramSpectrum Double #-}
+cieX :: (Fractional a, Ord a) => HistogramSpectrum a
 cieX =
   mkXYZResponseCurve
     [ 0.0001299
@@ -848,9 +503,9 @@ cieX =
     , 0.000001251141
     ]
 
-{-# SPECIALIZE cieY :: Spectrum Float #-}
-{-# SPECIALIZE cieY :: Spectrum Double #-}
-cieY :: (Fractional a, Ord a) => Spectrum a
+{-# SPECIALIZE cieY :: HistogramSpectrum Float #-}
+{-# SPECIALIZE cieY :: HistogramSpectrum Double #-}
+cieY :: (Fractional a, Ord a) => HistogramSpectrum a
 cieY =
   mkXYZResponseCurve
     [ 0.000003917
@@ -1328,12 +983,12 @@ cieY =
 
 {-# SPECIALIZE cieYIntegral :: Float #-}
 {-# SPECIALIZE cieYIntegral :: Double #-}
-cieYIntegral :: (RealFloat a, Bounded a) => a
+cieYIntegral :: (RealFloat a) => a
 cieYIntegral = integrateVisible cieY
 
-{-# SPECIALIZE cieZ :: Spectrum Float #-}
-{-# SPECIALIZE cieZ :: Spectrum Double #-}
-cieZ :: (Fractional a, Ord a) => Spectrum a
+{-# SPECIALIZE cieZ :: HistogramSpectrum Float #-}
+{-# SPECIALIZE cieZ :: HistogramSpectrum Double #-}
+cieZ :: (Fractional a, Ord a) => HistogramSpectrum a
 cieZ =
   mkXYZResponseCurve
     [ 0.0006061
@@ -1629,17 +1284,17 @@ cieZ =
     ]
 
 mkDSeriesIlluminant
-  :: (RealFloat a, Bounded a, Enum a)
+  :: (RealFloat a, Enum a)
   => Bool
   -> [a]
-  -> Spectrum a
+  -> InterpolatedSpectrum a
 mkDSeriesIlluminant shouldNormalize =
   (if shouldNormalize then normalizedInterpolatedSpectrum else interpolatedSpectrum)
     . zip [300, 305 ..]
 
-{-# SPECIALIZE cieD50 :: Spectrum Float #-}
-{-# SPECIALIZE cieD50 :: Spectrum Double #-}
-cieD50 :: (RealFloat a, Bounded a, Enum a) => Spectrum a
+{-# SPECIALIZE cieD50 :: InterpolatedSpectrum Float #-}
+{-# SPECIALIZE cieD50 :: InterpolatedSpectrum Double #-}
+cieD50 :: (RealFloat a, Enum a) => InterpolatedSpectrum a
 cieD50 =
   mkDSeriesIlluminant
     True
@@ -1752,9 +1407,9 @@ cieD50 =
     , 64.2855
     ]
 
-{-# SPECIALIZE acesD60 :: Spectrum Float #-}
-{-# SPECIALIZE acesD60 :: Spectrum Double #-}
-acesD60 :: (RealFloat a, Bounded a, Enum a) => Spectrum a
+{-# SPECIALIZE acesD60 :: InterpolatedSpectrum Float #-}
+{-# SPECIALIZE acesD60 :: InterpolatedSpectrum Double #-}
+acesD60 :: (RealFloat a, Enum a) => InterpolatedSpectrum a
 acesD60 =
   mkDSeriesIlluminant
     True
@@ -1867,9 +1522,9 @@ acesD60 =
     , 63.7793
     ]
 
-{-# SPECIALIZE cieD65 :: Spectrum Float #-}
-{-# SPECIALIZE cieD65 :: Spectrum Double #-}
-cieD65 :: (RealFloat a, Bounded a, Enum a) => Spectrum a
+{-# SPECIALIZE cieD65 :: InterpolatedSpectrum Float #-}
+{-# SPECIALIZE cieD65 :: InterpolatedSpectrum Double #-}
+cieD65 :: (RealFloat a, Enum a) => InterpolatedSpectrum a
 cieD65 =
   mkDSeriesIlluminant
     True
@@ -1983,10 +1638,10 @@ cieD65 =
     ]
 
 mkInterpolatedSpectrumFromInterleaved
-  :: (RealFloat a, Bounded a)
+  :: (RealFloat a)
   => Bool
   -> [a]
-  -> Spectrum a
+  -> InterpolatedSpectrum a
 mkInterpolatedSpectrumFromInterleaved shouldNormalize =
   (if shouldNormalize then normalizedInterpolatedSpectrum else interpolatedSpectrum)
     . pairs

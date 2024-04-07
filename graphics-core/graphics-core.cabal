@@ -78,6 +78,14 @@ library
     Numeric.FMA
     Numeric.Interval.IEEE
     Physics.Spectrum
+    Physics.Spectrum.Add
+    Physics.Spectrum.Blackbody
+    Physics.Spectrum.Class
+    Physics.Spectrum.Histogram
+    Physics.Spectrum.Interpolated
+    Physics.Spectrum.Mul
+    Physics.Spectrum.RGB
+    Physics.Spectrum.Sampled
 
   other-modules:   Paths_graphics_core
   hs-source-dirs:  src
