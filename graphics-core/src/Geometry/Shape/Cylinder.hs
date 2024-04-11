@@ -15,7 +15,7 @@ module Geometry.Shape.Cylinder (
 ) where
 
 import Control.Applicative (Alternative (..))
-import Control.Lens (Lens', lens, view)
+import Control.Lens (Lens', lens)
 import Control.Monad (guard)
 import Data.Function (on)
 import Data.Maybe (fromMaybe)
@@ -24,7 +24,7 @@ import GHC.Show (showSpace)
 import qualified Geometry.Bounds as Bounds
 import Geometry.Interaction (SurfaceInteraction, surfaceInteraction, surfaceLocalGeometry)
 import Geometry.Normal (Normal (..))
-import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
+import Geometry.Ray (Ray (..), RayOrigin (..))
 import Geometry.Shape
 import Geometry.Shape.Sphere (QuadricIntersection (..), shrinkTowards)
 import Geometry.Spherical (allDirections, atan2')
@@ -190,7 +190,7 @@ instance (FMA a, IEEE a, Epsilon a, Bounded a) => Shape (Cylinder a) a where
 
   surfaceArea Cylinder{..} = _cylinderHeight * _cylinderRadius * _cylinderPhiMax
 
-  intersectRay (view ray -> r) tMax s = do
+  intersectRay r tMax s = do
     isect@QuadricIntersection{..} <- intersectRayQuadric r tMax s
     pure $ RayIntersection (interactionFromQuadric r isect s) _qiTHit
 

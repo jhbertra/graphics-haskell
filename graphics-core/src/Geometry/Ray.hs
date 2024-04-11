@@ -4,7 +4,7 @@
 
 module Geometry.Ray where
 
-import Control.Lens (Field2 (_2), Lens', Traversal', lens, makeLenses, makePrisms, over)
+import Control.Lens (makeLenses, over, _Just)
 import GHC.Generics (Generic, Generic1)
 import Geometry.Normal (Normal (..))
 import Geometry.Parametric (Parametric (..))
@@ -15,52 +15,24 @@ import Linear.Arbitrary ()
 import Numeric.IEEE (IEEE (..))
 import Numeric.Interval.IEEE (Interval)
 import qualified Numeric.Interval.IEEE as I
-import Test.QuickCheck (Arbitrary, genericShrink, oneof)
+import Test.QuickCheck (Arbitrary, genericShrink)
 import Test.QuickCheck.Arbitrary (Arbitrary (..))
 
 data Ray a = Ray
   { _o :: Point V3 a
   , _d :: V3 a
+  , _rayDifferentials :: Maybe (RayDifferentials a)
   , _time :: a
   }
   deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
 
-$(makeLenses ''Ray)
-
 instance (Arbitrary a) => Arbitrary (Ray a) where
-  arbitrary = Ray <$> arbitrary <*> arbitrary <*> arbitrary
+  arbitrary = Ray <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
   shrink = genericShrink
 
 instance (Num a) => Parametric (Ray a) V3 a where
   pointAt t Ray{..} = _o .+^ _d ^* t
   {-# INLINE pointAt #-}
-
-data RayWithDifferentials a
-  = RayWithNoDifferentials (Ray a)
-  | RayWithDifferentials (Ray a) (RayDifferentials a)
-  deriving (Ord, Eq, Generic, Generic1, Functor, Show, Read)
-
-instance (Arbitrary a) => Arbitrary (RayWithDifferentials a) where
-  arbitrary =
-    oneof
-      [ RayWithNoDifferentials <$> arbitrary
-      , RayWithDifferentials <$> arbitrary <*> arbitrary
-      ]
-  shrink = genericShrink
-
-rdRay :: Lens' (RayWithDifferentials a) (Ray a)
-rdRay = lens get set
-  where
-    set :: RayWithDifferentials a -> Ray a -> RayWithDifferentials a
-    set rd r = case rd of
-      RayWithNoDifferentials _ -> RayWithNoDifferentials r
-      RayWithDifferentials _ ds -> RayWithDifferentials r ds
-    {-# INLINE set #-}
-    get :: RayWithDifferentials a -> Ray a
-    get = \case
-      RayWithNoDifferentials r -> r
-      RayWithDifferentials r _ -> r
-    {-# INLINE get #-}
 
 data RayDifferentials a = RayDifferentials
   { _rxOrigin :: V3 a
@@ -79,14 +51,11 @@ instance (Arbitrary a) => Arbitrary (RayDifferentials a) where
       <*> arbitrary
   shrink = genericShrink
 
-$(makePrisms ''RayWithDifferentials)
 $(makeLenses ''RayDifferentials)
+$(makeLenses ''Ray)
 
-rdDifferentials :: Traversal' (RayWithDifferentials a) (RayDifferentials a)
-rdDifferentials = _RayWithDifferentials . _2
-
-scaleDifferentials :: (Num a) => a -> RayWithDifferentials a -> RayWithDifferentials a
-scaleDifferentials s = over rdDifferentials \RayDifferentials{..} ->
+scaleDifferentials :: (Num a) => a -> Ray a -> Ray a
+scaleDifferentials s = over (rayDifferentials . _Just) \RayDifferentials{..} ->
   RayDifferentials
     { _rxOrigin = _rxOrigin ^* s
     , _ryOrigin = _ryOrigin ^* s
@@ -94,15 +63,6 @@ scaleDifferentials s = over rdDifferentials \RayDifferentials{..} ->
     , _ryDirection = _ryDirection ^* s
     }
 {-# INLINE scaleDifferentials #-}
-
-class IsRay r where
-  ray :: Lens' (r a) (Ray a)
-
-instance IsRay Ray where
-  ray = id
-
-instance IsRay RayWithDifferentials where
-  ray = rdRay
 
 class RayOrigin f where
   offsetRayOrigin :: (IEEE a, Epsilon a) => V3 a -> f a -> Point V3 a
@@ -127,7 +87,7 @@ offsetRayOriginTo' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> Point 
 offsetRayOriginTo' p n = offsetRayOrigin' p n . (.-. (I.midpoint <$> p))
 
 spawnRay' :: (IEEE a) => Point V3 (Interval a) -> Normal V3 a -> V3 a -> a -> Ray a
-spawnRay' p n ω = Ray (offsetRayOrigin' p n ω) ω
+spawnRay' p n ω = Ray (offsetRayOrigin' p n ω) ω Nothing
 
 spawnRayTo' :: (IEEE a, Epsilon a) => Point V3 (Interval a) -> Normal V3 a -> Point V3 a -> a -> Ray a
 spawnRayTo' p n = spawnRay' p n . normalize . (.-. (I.midpoint <$> p))

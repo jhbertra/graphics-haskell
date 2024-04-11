@@ -13,7 +13,7 @@ module Geometry.Shape.Triangle (
   Triangle (..),
 ) where
 
-import Control.Lens (Bifunctor (..), view, (^.))
+import Control.Lens (Bifunctor (..), (^.))
 import Control.Monad (guard)
 import Data.Function (on)
 import Data.Maybe (fromMaybe, isJust)
@@ -416,14 +416,13 @@ data TriangleIntersection = TriangleIntersection
   }
 
 intersectTriangle
-  :: (IsRay r)
-  => r Float
+  :: Ray Float
   -> Float
   -> Point V3 Float
   -> Point V3 Float
   -> Point V3 Float
   -> Maybe TriangleIntersection
-intersectTriangle (view ray -> Ray{..}) tMax p0 p1 p2 = do
+intersectTriangle Ray{..} tMax p0 p1 p2 = do
   guard $ not $ isDegenerateTriangle p0 p1 p2
   let kz = maxBasisIndex $ abs _d
   let kx = succ kz `mod` 3
@@ -481,12 +480,11 @@ isDegenerateTriangle :: Point V3 Float -> Point V3 Float -> Point V3 Float -> Bo
 isDegenerateTriangle a b c = quadrance (cross (c .-. a) (b .-. a)) == 0
 
 toRayIntersection
-  :: (IsRay r)
-  => r Float
+  :: Ray Float
   -> TriangleIntersection
   -> Triangle
   -> RayIntersection Float
-toRayIntersection (view ray -> Ray{..}) TriangleIntersection{..} t =
+toRayIntersection (Ray{..}) TriangleIntersection{..} t =
   flip
     RayIntersection
     _t

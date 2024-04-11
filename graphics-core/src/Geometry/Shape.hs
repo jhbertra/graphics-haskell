@@ -9,7 +9,6 @@ import Geometry.Bounds (Bounds3)
 import Geometry.Interaction (Interaction (..), SurfaceInteraction)
 import Geometry.Normal (Normal)
 import Geometry.Ray (
-  IsRay,
   Ray (..),
   RayOrigin (..),
   offsetRayOrigin,
@@ -35,9 +34,9 @@ class Shape s a | s -> a where
 
   normalBounds :: s -> DirectionCone (Normal V3) a
 
-  intersectRay :: (IsRay r) => r a -> a -> s -> Maybe (RayIntersection a)
+  intersectRay :: Ray a -> a -> s -> Maybe (RayIntersection a)
 
-  rayIntersects :: (IsRay r) => r a -> a -> s -> Bool
+  rayIntersects :: Ray a -> a -> s -> Bool
   rayIntersects r tMax = isJust . intersectRay r tMax
 
   surfaceArea :: s -> a
@@ -94,7 +93,7 @@ instance RayOrigin ReferencePoint where
     Nothing -> I.midpoint <$> _rpPoint
     Just (n, _) -> offsetRayOriginTo' _rpPoint n p
   spawnRay ω ReferencePoint{..} = case _rpNormals of
-    Nothing -> Ray (I.midpoint <$> _rpPoint) ω _rpTime
+    Nothing -> Ray (I.midpoint <$> _rpPoint) ω Nothing _rpTime
     Just (n, _) -> spawnRay' _rpPoint n ω _rpTime
   spawnRayTo p rp@ReferencePoint{..} =
     spawnRay (p .-. (I.midpoint <$> _rpPoint)) rp

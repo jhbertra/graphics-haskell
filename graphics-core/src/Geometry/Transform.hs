@@ -1,12 +1,12 @@
 module Geometry.Transform where
 
-import Control.Lens (Lens, foldMapOf, lens, (.~), (^.))
-import Data.Function (on, (&))
+import Control.Lens (Lens, foldMapOf, lens, (^.))
+import Data.Function (on)
 import GHC.Show (showSpace)
 import Geometry.Bounds (Bounds)
 import qualified Geometry.Bounds as Bounds
 import Geometry.Normal (Normal (..))
-import Geometry.Ray (IsRay (..), Ray (..))
+import Geometry.Ray (Ray (..), RayDifferentials (..))
 import Linear (
   Additive (lerp),
   Epsilon (..),
@@ -99,10 +99,9 @@ instance (Floating a, Epsilon a) => ApplyTransform (Normal V3) a where
 instance (IEEE a) => ApplyTransform Ray a where
   (!!*!!) t = snd . transformRay t 0
 
-transformRay :: (IEEE a) => (IsRay r) => Transform a -> a -> r a -> (a, r a)
-transformRay t tMax r = (tMax', r & ray .~ r')
+transformRay :: (IEEE a) => Transform a -> a -> Ray a -> (a, Ray a)
+transformRay t tMax Ray{..} = (tMax', r')
   where
-    Ray{..} = r ^. ray
     o = (I.singleton <$> t) !!*!! (I.singleton <$> _o)
     d = t !!*!! _d
     lSquared = quadrance d
@@ -112,7 +111,16 @@ transformRay t tMax r = (tMax', r & ray .~ r')
           let dt = dot (abs d) (pointMargin o) / lSquared
               d' = I.singleton <$> d ^* dt
            in (tMax - dt, o .+^ d')
-    r' = Ray (I.midpoint <$> o') d _time
+    r' = Ray (I.midpoint <$> o') d (fmap (t !!*!!) _rayDifferentials) _time
+
+instance (IEEE a) => ApplyTransform RayDifferentials a where
+  (!!*!!) t RayDifferentials{..} =
+    RayDifferentials
+      { _rxOrigin = t !!*!! _rxOrigin
+      , _ryOrigin = t !!*!! _ryOrigin
+      , _rxDirection = t !!*!! _rxDirection
+      , _ryDirection = t !!*!! _ryDirection
+      }
 
 instance (Ord a, Bounded a, Fractional a) => ApplyTransform (Bounds V3) a where
   (!!*!!) t = foldMapOf Bounds.corners3 (Bounds.singularity . (t !!*!!))

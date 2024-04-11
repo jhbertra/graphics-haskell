@@ -6,7 +6,7 @@
 
 module Geometry.Bounds where
 
-import Control.Lens (Fold, Index, IxValue, Ixed (..), folding, makeLenses, view, (^.))
+import Control.Lens (Fold, Index, IxValue, Ixed (..), folding, makeLenses, (^.))
 import Control.Lens.Traversal (Traversable1 (..))
 import Control.Monad (guard)
 import Data.Coerce (coerce)
@@ -23,7 +23,7 @@ import qualified Data.Vector.Generic as V
 import qualified Data.Vector.Generic.Mutable as M
 import qualified Data.Vector.Unboxed as U
 import GHC.Generics (Generic, Generic1)
-import Geometry.Ray (IsRay (..), Ray (..))
+import Geometry.Ray (Ray (..))
 import Linear (Additive (..), R1 (_x), R2 (_xy, _y), V1 (..), V2 (..), V3 (..), (^/), _xz, _yz)
 import Linear.Affine (Affine (..), Point (..), distanceA, unP)
 import Linear.Affine.Arbitrary ()
@@ -402,9 +402,9 @@ rayIntersects'
       {-# INLINE resolveBound #-}
 {-# INLINE rayIntersects' #-}
 
-intersectRay :: (IsRay r, RealFloat a) => r a -> a -> Bounds3 a -> Maybe (Bounds1 a)
+intersectRay :: (RealFloat a) => Ray a -> a -> Bounds3 a -> Maybe (Bounds1 a)
 intersectRay
-  (view ray -> Ray (P (V3 ox oy oz)) (V3 dx dy dz) _)
+  (Ray (P (V3 ox oy oz)) (V3 dx dy dz) _ _)
   tRayMax
   (Bounds (P (V3 x0 y0 z0)) (P (V3 x1 y1 z1))) = do
     let (txMin, txMax) = resolveBounds dx x0 x1 ox
@@ -424,8 +424,8 @@ intersectRay
       {-# INLINE resolveBounds #-}
 {-# INLINE intersectRay #-}
 
-rayIntersects :: (IsRay r, RealFloat a) => r a -> a -> Bounds3 a -> Bool
-rayIntersects (view ray -> Ray o (V3 (normalizeZero -> dx) (normalizeZero -> dy) (normalizeZero -> dz)) _) tMax =
+rayIntersects :: (RealFloat a) => Ray a -> a -> Bounds3 a -> Bool
+rayIntersects (Ray o (V3 (normalizeZero -> dx) (normalizeZero -> dy) (normalizeZero -> dz)) _ _) tMax =
   rayIntersects'
     o
     (V3 (recip dx) (recip dy) (recip dz))

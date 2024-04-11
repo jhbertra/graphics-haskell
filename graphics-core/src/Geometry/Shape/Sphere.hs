@@ -24,7 +24,7 @@ module Geometry.Shape.Sphere (
 ) where
 
 import Control.Applicative ((<|>))
-import Control.Lens (Lens', lens, view, (^.))
+import Control.Lens (Lens', lens, (^.))
 import Control.Monad (guard)
 import Data.Coerce (coerce)
 import Data.Function (on)
@@ -34,7 +34,7 @@ import GHC.Show (showSpace)
 import qualified Geometry.Bounds as Bounds
 import Geometry.Interaction (SurfaceInteraction (..), surfaceInteraction, surfaceLocalGeometry)
 import Geometry.Normal (Normal (..))
-import Geometry.Ray (IsRay (..), Ray (..), RayOrigin (..))
+import Geometry.Ray (Ray (..), RayOrigin (..))
 import Geometry.Shape (RayIntersection (..), ReferencePoint (..), Shape (..), SurfaceSample (..))
 import Geometry.Spherical (SphericalCoordinates (..), allDirections, atan2', safeAcos, safeSqrt, sphericalDirection)
 import Geometry.Transform (
@@ -132,11 +132,11 @@ instance (FMA a, IEEE a, Epsilon a, Bounded a) => Shape (Sphere a) a where
 
   normalBounds _ = allDirections
 
-  intersectRay (view ray -> r) tMax s = do
+  intersectRay r tMax s = do
     isect@QuadricIntersection{..} <- intersectRayQuadric r tMax s
     pure $ RayIntersection (interactionFromQuadric r isect s) _qiTHit
 
-  rayIntersects (view ray -> r) tMax = isJust . intersectRayQuadric r tMax
+  rayIntersects r tMax = isJust . intersectRayQuadric r tMax
 
   surfaceArea Sphere{..} = _spherePhiMax * _sphereRadius * (_sphereZMax - _sphereZMin)
 
