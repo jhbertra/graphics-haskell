@@ -10,7 +10,7 @@ import GHC.TypeLits (KnownNat, natVal)
 import Geometry.Bounds ()
 import Numeric.FMA
 
-class HasSpectrumSamples n a where
+class (Floating (SampledSpectrum n a)) => HasSpectrumSamples n a where
   data SampledSpectrum n a :: Type
   headSample :: SampledSpectrum n a -> a
   (!) :: SampledSpectrum n a -> Int -> a
@@ -167,10 +167,7 @@ sampledWavelengthsPdf (SampledWavelengths pdf _) = pdf
 
 terminateSecondary
   :: forall n a
-   . ( KnownNat n
-     , Fractional (SampledSpectrum n a)
-     , HasSpectrumSamples n a
-     )
+   . (KnownNat n, HasSpectrumSamples n a)
   => SampledWavelengths n a
   -> SampledWavelengths n a
 terminateSecondary sw@(SampledWavelengths pdf λ)

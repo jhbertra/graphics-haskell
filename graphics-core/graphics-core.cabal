@@ -72,6 +72,10 @@ library
     Geometry.Spherical
     Geometry.Transform
     Graphics.Color
+    Graphics.Rendering.Film
+    Graphics.Rendering.Film.RGB
+    Graphics.Rendering.Filter
+    Graphics.Rendering.Sensor
     Linear.Affine.Arbitrary
     Linear.Approximate
     Linear.V2.Arbitrary
